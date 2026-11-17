@@ -15,6 +15,28 @@ permissions:
   contents: write
 
 jobs:
+  # Type-checks only (no code generation), beside the build: compile errors arrive in minutes,
+  # not at the end of a full optimized build. Build scripts run, so C and Objective-C compile too.
+  check:
+    runs-on: macos-15
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --target aarch64-apple-ios && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-check
+          cache-on-failure: true
+      - name: Check
+        run: |
+          set -o pipefail
+          cargo check --target aarch64-apple-ios -p horizon-ios --keep-going --message-format short 2>&1 | tee check.log
+      - name: Errors
+        if: failure()
+        run: grep -E "error" check.log | sort -u | head -200
+
   ipa:
     # GitHub's free macOS runner, or a faster one named in the IOS_RUNNER repository variable
     # (e.g. blacksmith-6vcpu-macos-26).
@@ -33,10 +55,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ios-fast
+          # Save the compiled dependencies even when the build fails, so the next run starts warm.
+          cache-on-failure: true
       - name: Build
         run: |
           set -o pipefail
-          cargo build --profile fast --target aarch64-apple-ios -p horizon-ios --message-format short 2>&1 \
+          cargo build --profile fast --target aarch64-apple-ios -p horizon-ios --keep-going --message-format short 2>&1 \
             | tee build.log | grep -E "^(error|warning: unused)|error\[|^\S+:[0-9]+:[0-9]+: error" || true
           test -f target/aarch64-apple-ios/fast/horizon-ios
       - name: Errors
