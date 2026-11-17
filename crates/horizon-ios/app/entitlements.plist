@@ -3,10 +3,8 @@
 <plist version="1.0">
 <dict>
 	<!-- The game holds a world, its meshes and textures in memory: ask iOS for the larger limit.
-	     A sideloading tool keeps these only where the signing account allows them. -->
+	     AltStore 2.2+ keeps it with a free Apple ID; SideStore needs GetMoreRam (HORIZON-IOS.md). -->
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
-	<true/>
-	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
 	<true/>
 </dict>
 </plist>

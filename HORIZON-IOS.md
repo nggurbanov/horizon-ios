@@ -9,12 +9,15 @@ affiliated with the Horizon Team, the Amethyst/PojavLauncher teams, Mojang or Mi
 ## Install
 
 1. Download `Horizon.ipa` from the [`ios-latest` release](../../releases/tag/ios-latest).
-2. Sideload it with AltStore, SideStore, Sideloadly or TrollStore. The IPA is only ad-hoc
-   signed, so your tool signs it for your device.
+2. Sideload it. With a free Apple ID, use **AltStore 2.2 or later**: it keeps the app's
+   increased-memory-limit entitlement, without which iOS stops the game at about half the
+   device's memory. SideStore keeps it only after you add "Increased Memory Limit" to the app's
+   App ID with [GetMoreRam](https://github.com/hugeBlack/GetMoreRam) and reinstall; Sideloadly
+   drops it. TrollStore and paid developer accounts keep it too.
    - iOS 15 or later on an iPhone or iPad with an A12 chip or newer.
-   - Horizon needs a lot of memory. Tools and accounts that keep the
-     `increased-memory-limit` entitlement (TrollStore, a paid developer account) give it the
-     most room.
+   - A free Apple ID's apps expire after 7 days: refresh them in AltStore.
+   - No JIT or StikDebug needed: Horizon is compiled ahead of time. (WebAssembly code mods
+     would need JIT; they aren't supported on iOS yet.)
 
 ## The game files
 
