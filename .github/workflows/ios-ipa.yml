@@ -17,9 +17,9 @@ permissions:
 
 jobs:
   ipa:
-    # GitHub's free macOS runner, or a faster one named in the IOS_RUNNER repository variable
-    # (e.g. blacksmith-6vcpu-macos-26).
-    runs-on: ${{ vars.IOS_RUNNER || 'macos-15' }}
+    # GitHub's Intel Macs by default: the Apple Silicon pool often drops queued jobs for lack of
+    # capacity. Set the IOS_RUNNER repository variable to use another runner (e.g. macos-15).
+    runs-on: ${{ vars.IOS_RUNNER || 'macos-15-intel' }}
     env:
       IPHONEOS_DEPLOYMENT_TARGET: "15.0"
       CARGO_TERM_COLOR: never
