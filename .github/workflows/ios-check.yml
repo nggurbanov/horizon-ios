@@ -1,0 +1,34 @@
+# horizon-ios: type-checks the iOS app for compile errors, quicker than the full build in ios-ipa.yml.
+name: ios check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ios-check-${{ github.sha }}
+
+jobs:
+  # Type-checks only (no code generation), beside the build: compile errors arrive in minutes,
+  # not at the end of a full optimized build. Build scripts run, so C and Objective-C compile too.
+  check:
+    # GitHub's Intel Macs: a separate pool from the Apple Silicon ones, which run out at busy times.
+    runs-on: macos-15-intel
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --target aarch64-apple-ios && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-check
+          cache-on-failure: true
+      - name: Check
+        run: |
+          set -o pipefail
+          cargo check --target aarch64-apple-ios -p horizon-ios --keep-going --message-format short 2>&1 | tee check.log
+      - name: Errors
+        if: failure()
+        run: grep -E "error" check.log | sort -u | head -200
