@@ -7,7 +7,7 @@
 //! queue stays empty.
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use winit::event::{ElementState, MouseButton};
 use winit::keyboard::KeyCode;
 
@@ -40,8 +40,18 @@ static QUEUE: Mutex<VecDeque<TouchInput>> = Mutex::new(VecDeque::new());
 static GRABBING: AtomicBool = AtomicBool::new(false);
 static WINDOW_CREATED: Mutex<Option<fn(&winit::window::Window)>> = Mutex::new(None);
 
+/// Writes the first `limit` of a kind of event to the log (`Documents/horizon-log.txt` on iOS),
+/// so a report shows how far touch input got.
+fn trace(count: &AtomicU32, limit: u32, line: impl FnOnce() -> String) {
+    if count.fetch_add(1, Ordering::Relaxed) < limit {
+        eprintln!("horizon-ios: {}", line());
+    }
+}
+
 /// Adds an input for the next event-loop pass.
 pub fn push(input: TouchInput) {
+    static PUSHED: AtomicU32 = AtomicU32::new(0);
+    trace(&PUSHED, 40, || format!("touch input {input:?}"));
     if let Ok(mut queue) = QUEUE.lock() {
         // A stalled game must not grow the queue without end.
         if queue.len() < 4096 {
@@ -52,10 +62,15 @@ pub fn push(input: TouchInput) {
 
 /// The inputs since the last call, oldest first.
 pub fn take() -> Vec<TouchInput> {
-    QUEUE
+    static TAKEN: AtomicU32 = AtomicU32::new(0);
+    let inputs: Vec<TouchInput> = QUEUE
         .lock()
         .map(|mut queue| queue.drain(..).collect())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if !inputs.is_empty() {
+        trace(&TAKEN, 20, || format!("the game took {} touch inputs", inputs.len()));
+    }
+    inputs
 }
 
 /// Whether the game holds the pointer (playing, no screen open): touches then turn the view
@@ -106,6 +121,7 @@ pub fn on_window_created(hook: fn(&winit::window::Window)) {
 /// The game created its window.
 pub fn window_created(window: &winit::window::Window) {
     let hook = WINDOW_CREATED.lock().ok().and_then(|slot| *slot);
+    eprintln!("horizon-ios: game window created (touch hook set: {})", hook.is_some());
     if let Some(hook) = hook {
         hook(window);
     }

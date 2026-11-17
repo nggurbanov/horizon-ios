@@ -315,7 +315,12 @@ static int keycodeAt(ControlButton *button, int i) {
     [self layoutForCurrentSize];
     self.hasGrabState = NO;
     [self tickInput];
-    [self becomeFirstResponder];
+    BOOL responder = [self becomeFirstResponder];
+    // horizon-ios: how the overlay sits, for a report from a device (Documents/horizon-log.txt).
+    NSLog(@"horizon-ios: overlay attached to %@ %@ in window %@ (root %@, parent %@), %lu controls, first responder %d, interaction %d",
+        NSStringFromClass(gameView.class), NSStringFromCGRect(gameView.frame), gameView.window,
+        gameView.window.rootViewController, self.parentViewController,
+        (unsigned long)self.ctrlView.subviews.count, responder, gameView.userInteractionEnabled);
 }
 
 - (void)viewDidLayoutSubviews {
@@ -665,6 +670,12 @@ static int keycodeAt(ControlButton *button, int i) {
         }
     }
 
+    static int logged = 0;
+    if (logged < 10 && sender.state == UIGestureRecognizerStateRecognized) {
+        logged++;
+        NSLog(@"horizon-ios: tap (click %d, hotbar slot %d, mouse gestures %d)",
+            self.shouldTriggerClick, currentHotbarSlot, self.enableMouseGestures);
+    }
     if (!self.shouldTriggerClick) return;
 
     if (sender.state == UIGestureRecognizerStateRecognized) {
@@ -948,6 +959,13 @@ static int keycodeAt(ControlButton *button, int i) {
 // Equals to Android ACTION_DOWN
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
+    static int logged = 0;
+    if (logged < 10) {
+        logged++;
+        UITouch *first = touches.anyObject;
+        NSLog(@"horizon-ios: touch began at %@ (type %ld), grabbing %d",
+            NSStringFromCGPoint([first locationInView:self.view]), (long)first.type, isGrabbing);
+    }
     for (UITouch *touch in touches) {
         if (touch.type == UITouchTypeIndirectPointer) {
             continue; // handle this in a different place
@@ -1015,6 +1033,7 @@ static int keycodeAt(ControlButton *button, int i) {
 #pragma mark - Bridge entry point
 
 void horizon_ios_attach_overlay(void *ui_view) {
+    NSLog(@"horizon-ios: attaching the overlay (main thread %d)", NSThread.isMainThread);
     if (ui_view == NULL) {
         return;
     }
