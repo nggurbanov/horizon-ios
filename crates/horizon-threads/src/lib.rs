@@ -160,6 +160,11 @@ mod par_chunks_tests {
 /// a base M4 (4 performance and 6 efficiency cores) a fast flight's p99 frame went from
 /// 20 ms with 9 workers to 7 ms with 3 (#11294).
 pub fn default_workers() -> usize {
+    // horizon-ios: an iPhone has 2 performance cores, which left 1 worker to load a world;
+    // count its efficiency cores too.
+    #[cfg(target_os = "ios")]
+    return workers_for(worker_count(), || None);
+    #[cfg(not(target_os = "ios"))]
     workers_for(worker_count(), performance_cores)
 }
 
