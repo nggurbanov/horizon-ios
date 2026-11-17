@@ -78,5 +78,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           notes="Unofficial iOS build of Horizon from ${GITHUB_SHA::10} (run ${{ github.run_number }}). Unsigned for your device: install it with AltStore, SideStore, Sideloadly or TrollStore. You need your own copy of Minecraft: Java Edition; see HORIZON-IOS.md for putting the game files on the device."
-          gh release delete ios-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create ios-latest Horizon.ipa --prerelease --title "horizon-ios (latest)" --notes "$notes" --target "$GITHUB_SHA"
+          # Replace the IPA on the existing release: the job's token can't create the tag
+          # (HTTP 403), so the release keeps its first tag and the notes name the build.
+          gh release upload ios-latest Horizon.ipa --clobber
+          gh release edit ios-latest --notes "$notes"
