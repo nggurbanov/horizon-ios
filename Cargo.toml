@@ -10,6 +10,7 @@ members = [
     "crates/horizon-mod-host",
     "crates/horizon-game",
     "crates/horizon-official",
+    "crates/horizon-ios",
     "crates/horizon-heartbeat",
 
     "crates/horizon-core",
@@ -108,6 +109,9 @@ large_enum_variant = "allow"
 # Drop this and the folder once a wgpu release has these fixes.
 [patch.crates-io]
 wgpu-hal = { path = "third_party/wgpu-hal" }
+# horizon-ios: winit 0.30.13 with key events the iOS touch bridge can make (`KeyEvent::synthetic`),
+# and `modifier_supplement` and `scancode` on iOS (third_party/winit, HORIZON-IOS.md).
+winit = { path = "third_party/winit" }
 # naga 30.0.1, with the fixes to its GLSL frontend that shader packs need (THIRD_PARTY_NOTICES.md).
 naga = { path = "third_party/naga" }
 # libmimalloc-sys 0.1.49 whose mimalloc v3 counts bits without POPCNT when MSVC builds it: the
