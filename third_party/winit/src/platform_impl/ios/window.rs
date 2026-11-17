@@ -184,11 +184,13 @@ impl Inner {
     }
 
     pub fn inner_size(&self) -> PhysicalSize<u32> {
+        // horizon-ios: the whole screen, as `Resized` reports it and the drawing surface covers
+        // it; the safe area left the surface sized for part of its layer.
         let scale_factor = self.scale_factor();
-        let safe_area = self.safe_area_screen_space();
+        let frame = self.screen_frame();
         let size = LogicalSize {
-            width: safe_area.size.width as f64,
-            height: safe_area.size.height as f64,
+            width: frame.size.width as f64,
+            height: frame.size.height as f64,
         };
         size.to_physical(scale_factor)
     }
@@ -508,17 +510,10 @@ impl Window {
 
         let screen_bounds = screen.bounds();
 
-        let frame = match window_attributes.inner_size {
-            Some(dim) => {
-                let scale_factor = screen.scale();
-                let size = dim.to_logical::<f64>(scale_factor as f64);
-                CGRect {
-                    origin: screen_bounds.origin,
-                    size: CGSize { width: size.width as _, height: size.height as _ },
-                }
-            },
-            None => screen_bounds,
-        };
+        // horizon-ios: always the whole screen. A desktop size (Horizon asks for 1040x700) made
+        // a window smaller than the screen that iOS turned on its side in landscape.
+        let _ = &window_attributes.inner_size;
+        let frame = screen_bounds;
 
         let view = WinitView::new(mtm, &window_attributes, frame);
 
