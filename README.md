@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **horizon-ios is an unofficial fork** of [Horizon](https://github.com/horizon-rust/horizon) that ports it to iOS as a native app. It is not affiliated with or endorsed by the Horizon Team, Mojang or Microsoft. Please report bugs in this fork here, not upstream.
+>
+> **Licence:** Horizon's own files keep their [LGPL-3.0-or-later](LICENSE) licence. The iOS app also includes code from [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS), which is [GPL-3.0](LICENSES/GPL-3.0.txt). Because of that, the iOS app as a whole is distributed under the GPL-3.0.
+>
+> As with upstream, you need your own copy of Minecraft: Java Edition. This fork ships no Mojang files.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/title-dark.png">
