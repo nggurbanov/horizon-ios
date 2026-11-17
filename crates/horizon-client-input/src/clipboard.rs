@@ -112,6 +112,28 @@ pub fn helper_clipboard_contents(clipboard: &str) -> String {
     strip_formatting(&clipboard.replace('\r', ""))
 }
 
+/// horizon-ios: arboard has no iOS backend. Without a system clipboard, text copied in the game
+/// can still be pasted in the game (`SystemClipboard`'s fallback). UIPasteboard comes later.
+#[cfg(target_os = "ios")]
+mod arboard {
+    pub enum Error {
+        ContentNotAvailable,
+        ClipboardNotSupported,
+    }
+    pub struct Clipboard;
+    impl Clipboard {
+        pub fn new() -> Result<Self, Error> {
+            Err(Error::ClipboardNotSupported)
+        }
+        pub fn get_text(&mut self) -> Result<String, Error> {
+            Err(Error::ContentNotAvailable)
+        }
+        pub fn set_text(&mut self, _: String) -> Result<(), Error> {
+            Err(Error::ClipboardNotSupported)
+        }
+    }
+}
+
 /// A clipboard: the system's, or an in-memory one in tests.
 pub trait Clipboard {
     /// `KeyboardHandler.getClipboard`: empty when there is no text.

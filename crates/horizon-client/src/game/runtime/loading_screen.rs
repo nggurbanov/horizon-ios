@@ -130,6 +130,8 @@ impl Loading {
         if let Some(hwnd) = hwnd(&window) {
             horizon_threads::system_menu::suppress(hwnd);
         }
+        // horizon-ios: the host puts its touch controls over the new window's view.
+        horizon_client_input::touch_bridge::window_created(&window);
         drop(window_step);
         // The renderer takes seconds to build and winit's window sits white
         // until the first frame presents, so paint the boot screen on it and
@@ -461,6 +463,16 @@ impl ApplicationHandler for App {
                 return;
             }
             App::Loading(loading) => {
+                // horizon-ios: the title menu takes touches while the game loads.
+                #[cfg(target_os = "ios")]
+                if let Some(id) = loading.window.as_ref().map(|w| w.id()) {
+                    horizon_client_input::touch_bridge::set_grabbing(false);
+                    for event in super::window_handler::touch_events() {
+                        if let super::window_handler::TouchEvent::Window(event) = event {
+                            loading.window_event(event_loop, id, event);
+                        }
+                    }
+                }
                 loading.about_to_wait(event_loop);
                 if loading.error.is_some() {
                     event_loop.exit();

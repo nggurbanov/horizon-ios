@@ -187,6 +187,10 @@ impl Options {
         let mut o = Self {
             resources: if sibling.join("horizon-resources.json").exists() {
                 sibling
+            } else if cfg!(target_os = "ios") {
+                // horizon-ios: the game folder is the app's Documents, which the Files app and
+                // Finder show; the prepared files go in its `resources` folder (HORIZON-IOS.md).
+                std::path::PathBuf::from("resources")
             } else {
                 std::path::Path::new(".local/horizon-client").join(horizon_core::VANILLA_VERSION)
             },

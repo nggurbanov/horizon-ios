@@ -46,10 +46,18 @@ pub fn prepare_main() {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "ios")))]
 fn prepare() -> std::io::Result<()> {
     // Executable link settings reserve the same stack on Windows and macOS.
     inspect_current().map_err(std::io::Error::other)
+}
+
+/// horizon-ios: iOS gives the main thread a fixed stack that no link setting enlarges. Only
+/// mod guests need the large one, and the iOS build runs none: `check_current` still refuses
+/// guest entry on a thread that is too small.
+#[cfg(target_os = "ios")]
+fn prepare() -> std::io::Result<()> {
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

@@ -359,6 +359,154 @@ impl Game<'_> {
     }
 }
 
+/// horizon-ios: a touch control's input as the window or device event a keyboard or mouse makes.
+#[cfg(target_os = "ios")]
+pub(super) enum TouchEvent {
+    Window(WindowEvent),
+    Device(DeviceEvent),
+}
+
+/// horizon-ios: the touch controls' input since the last pass (`touch_bridge`), as the events a
+/// keyboard and mouse make, so it goes through the same handlers.
+#[cfg(target_os = "ios")]
+pub(super) fn touch_events() -> Vec<TouchEvent> {
+    use horizon_client_input::touch_bridge::{self, TouchInput};
+    use winit::event::{KeyEvent, MouseScrollDelta, TouchPhase};
+    use winit::keyboard::{Key, KeyLocation, NativeKey, NativeKeyCode};
+    let device_id = DeviceId::dummy();
+    let key = |event: KeyEvent| {
+        TouchEvent::Window(WindowEvent::KeyboardInput {
+            device_id,
+            event,
+            is_synthetic: false,
+        })
+    };
+    let mut events = Vec::new();
+    for input in touch_bridge::take() {
+        match input {
+            TouchInput::Key { code, state, text } => {
+                let logical = named_key(code).map(Key::Named).unwrap_or_else(|| {
+                    text.as_deref().map_or(Key::Unidentified(NativeKey::Unidentified), |t| {
+                        Key::Character(t.into())
+                    })
+                });
+                let text = text.filter(|_| state == ElementState::Pressed);
+                events.push(key(KeyEvent::synthetic(
+                    PhysicalKey::Code(code),
+                    logical,
+                    text.map(Into::into),
+                    KeyLocation::Standard,
+                    state,
+                    false,
+                )));
+            }
+            TouchInput::Text(text) => {
+                for state in [ElementState::Pressed, ElementState::Released] {
+                    events.push(key(KeyEvent::synthetic(
+                        PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
+                        Key::Character(text.as_str().into()),
+                        (state == ElementState::Pressed).then(|| text.as_str().into()),
+                        KeyLocation::Standard,
+                        state,
+                        false,
+                    )));
+                }
+            }
+            TouchInput::CursorTo { x, y } => {
+                events.push(TouchEvent::Window(WindowEvent::CursorMoved {
+                    device_id,
+                    position: winit::dpi::PhysicalPosition::new(x, y),
+                }))
+            }
+            TouchInput::Button { button, state } => {
+                events.push(TouchEvent::Window(WindowEvent::MouseInput {
+                    device_id,
+                    state,
+                    button,
+                }))
+            }
+            TouchInput::Look { dx, dy } => {
+                events.push(TouchEvent::Device(DeviceEvent::MouseMotion { delta: (dx, dy) }))
+            }
+            TouchInput::Scroll { dx, dy } => {
+                events.push(TouchEvent::Window(WindowEvent::MouseWheel {
+                    device_id,
+                    delta: MouseScrollDelta::LineDelta(dx, dy),
+                    phase: TouchPhase::Moved,
+                }))
+            }
+        }
+    }
+    events
+}
+
+#[cfg(target_os = "ios")]
+impl Game<'_> {
+    fn take_touch_input(&mut self, event_loop: &ActiveEventLoop) {
+        let playing = self.captured && self.screen == Screen::Playing;
+        horizon_client_input::touch_bridge::set_grabbing(playing);
+        let hotbar = self
+            .renderer
+            .as_ref()
+            .filter(|_| playing && self.title.is_none())
+            .map(|r| {
+                let size = [r.config.width, r.config.height];
+                (size, HudBatch::new(size, self.settings.gui_scale_inputs()).scale)
+            });
+        horizon_client_input::touch_bridge::set_hotbar(hotbar);
+        let Some(id) = self.window.as_ref().map(|w| w.id()) else {
+            return;
+        };
+        for event in touch_events() {
+            match event {
+                TouchEvent::Window(event) => self.window_event(event_loop, id, event),
+                TouchEvent::Device(event) => {
+                    self.device_event(event_loop, DeviceId::dummy(), event)
+                }
+            }
+        }
+    }
+}
+
+/// The logical key a touch control's key code stands for, where it isn't a character.
+#[cfg(target_os = "ios")]
+fn named_key(code: KeyCode) -> Option<winit::keyboard::NamedKey> {
+    use winit::keyboard::NamedKey as N;
+    Some(match code {
+        KeyCode::Escape => N::Escape,
+        KeyCode::Enter | KeyCode::NumpadEnter => N::Enter,
+        KeyCode::Backspace => N::Backspace,
+        KeyCode::Tab => N::Tab,
+        KeyCode::Space => N::Space,
+        KeyCode::ShiftLeft | KeyCode::ShiftRight => N::Shift,
+        KeyCode::ControlLeft | KeyCode::ControlRight => N::Control,
+        KeyCode::AltLeft | KeyCode::AltRight => N::Alt,
+        KeyCode::SuperLeft | KeyCode::SuperRight => N::Super,
+        KeyCode::ArrowUp => N::ArrowUp,
+        KeyCode::ArrowDown => N::ArrowDown,
+        KeyCode::ArrowLeft => N::ArrowLeft,
+        KeyCode::ArrowRight => N::ArrowRight,
+        KeyCode::Delete => N::Delete,
+        KeyCode::Home => N::Home,
+        KeyCode::End => N::End,
+        KeyCode::PageUp => N::PageUp,
+        KeyCode::PageDown => N::PageDown,
+        KeyCode::F1 => N::F1,
+        KeyCode::F2 => N::F2,
+        KeyCode::F3 => N::F3,
+        KeyCode::F4 => N::F4,
+        KeyCode::F5 => N::F5,
+        KeyCode::F6 => N::F6,
+        KeyCode::F7 => N::F7,
+        KeyCode::F8 => N::F8,
+        KeyCode::F9 => N::F9,
+        KeyCode::F10 => N::F10,
+        KeyCode::F11 => N::F11,
+        KeyCode::F12 => N::F12,
+        _ => return None,
+    })
+}
+
 impl ApplicationHandler for Game<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -415,6 +563,8 @@ impl ApplicationHandler for Game<'_> {
             }
         }
         self.resize_state = Some(self.resize_state_of(window.inner_size()));
+        // horizon-ios: the host puts its touch controls over the new window's view.
+        horizon_client_input::touch_bridge::window_created(&window);
         self.window = Some(window);
         self.ime_allowed = false;
         self.ime_area = None;
@@ -487,6 +637,8 @@ impl ApplicationHandler for Game<'_> {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "ios")]
+        self.take_touch_input(event_loop);
         // Every event-loop pass, drawn or not: a window that stops redrawing (a lost
         // device, an occluded window) must still end after a server crash.
         self.exit_after_server_crash();

@@ -13,6 +13,9 @@ horizon-client-core = { path = "../horizon-client-core" }
 winit = "0.30.13"
 log = "0.4"
 png = "0.18"
+
+# horizon-ios: arboard has no iOS backend (clipboard.rs).
+[target.'cfg(not(target_os = "ios"))'.dependencies]
 arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
 
 [dev-dependencies]

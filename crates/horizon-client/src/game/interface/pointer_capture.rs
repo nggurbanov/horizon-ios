@@ -274,6 +274,9 @@ impl Game<'_> {
         (self.options.offscreen && !self.split_window)
             || self.unclaimed_window
             || self.scripted_run()
+            // horizon-ios: there is no pointer to lock; the touch overlay turns the view with
+            // drags (`touch_bridge`), as an agent's `mouse-move` does.
+            || cfg!(target_os = "ios")
     }
     /// A person pressed a mouse button inside the agent's window (`at_unclaimed`): from now on
     /// it is a window like any other, and that press takes the pointer

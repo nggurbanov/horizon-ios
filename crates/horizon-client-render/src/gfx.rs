@@ -12952,9 +12952,9 @@ impl DisplayReading {
         })
     }
     fn os(info: &wgpu::DisplayHdrInfo) -> Self {
-        #[cfg(target_os = "macos")]
+        #[cfg(target_vendor = "apple")]
         let hdr = macos_hdr(info);
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(target_vendor = "apple"))]
         let hdr = info.coarse.and_then(|coarse| coarse.high_dynamic_range);
         Self {
             luminance: os_reported(info),
@@ -12964,7 +12964,7 @@ impl DisplayReading {
 }
 /// Potential EDR is fixed for a screen; current EDR follows brightness and must not
 /// repeatedly switch HDR output as the player adjusts the desktop's brightness.
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_vendor = "apple", test))]
 fn macos_hdr(info: &wgpu::DisplayHdrInfo) -> Option<bool> {
     info.headroom?
         .potential
