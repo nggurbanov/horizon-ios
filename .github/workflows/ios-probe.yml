@@ -1,0 +1,52 @@
+# horizon-ios: find what stops the client crates compiling for iOS.
+# Each crate is checked on its own, so one failure doesn't hide the others.
+name: ios probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/ios-probe.yml"]
+
+jobs:
+  probe:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-ios, aarch64-apple-ios-sim]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+          rustc --version
+          xcodebuild -version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Check crates
+        run: |
+          mkdir -p probe
+          status=0
+          for crate in horizon-platform horizon-threads horizon-client-input horizon-dualsense \
+                       horizon-hdr horizon-mod-wasm horizon-client-render horizon-client-lib horizon-client; do
+            echo "::group::$crate"
+            if cargo check --target ${{ matrix.target }} -p "$crate" --message-format short > "probe/$crate.log" 2>&1; then
+              echo "OK   $crate" | tee -a probe/summary.txt
+            else
+              echo "FAIL $crate" | tee -a probe/summary.txt
+              status=1
+            fi
+            grep -E "^(error|warning: unused)" "probe/$crate.log" | sort -u | head -40 || true
+            tail -30 "probe/$crate.log"
+            echo "::endgroup::"
+          done
+          cat probe/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.target }}
+          path: probe/
