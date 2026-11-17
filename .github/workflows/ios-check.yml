@@ -1,10 +1,9 @@
 # horizon-ios: type-checks the iOS app for compile errors, quicker than the full build in ios-ipa.yml.
 name: ios check
 
+# By hand only: the full build (ios-ipa.yml) reports every error too, and runners are scarce.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 concurrency:
   group: ios-check-${{ github.sha }}

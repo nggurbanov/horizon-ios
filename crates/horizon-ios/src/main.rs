@@ -12,13 +12,23 @@ mod host;
 #[cfg(target_os = "ios")]
 static GAME_IDENTITY: [u8; horizon_game::GAME_IDENTITY.len()] = horizon_game::GAME_IDENTITY;
 
+/// The stack the game runs on. Desktop builds give the main thread 136 MiB at link time
+/// (packaging/executable_link.rs); iOS gives it 1 MiB whatever the executable asks, and inside
+/// LiveContainer the game runs on LiveContainer's main thread. Only the pages used take memory.
+#[cfg(target_os = "ios")]
+const MAIN_STACK_BYTES: usize = 64 * 1024 * 1024;
+
 #[cfg(target_os = "ios")]
 fn main() {
     host::prepare();
-    horizon_game::prepare_main_stack();
-    std::hint::black_box(&GAME_IDENTITY);
-    horizon_official::register();
-    horizon_game::main();
+    // UIKit needs the main thread, so the game stays on it, on a larger stack. winit's event
+    // loop never returns on iOS: the app lives inside this call.
+    stacker::grow(MAIN_STACK_BYTES, || {
+        horizon_game::prepare_main_stack();
+        std::hint::black_box(&GAME_IDENTITY);
+        horizon_official::register();
+        horizon_game::main();
+    });
 }
 
 #[cfg(not(target_os = "ios"))]

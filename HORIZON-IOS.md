@@ -33,8 +33,13 @@ Minecraft: Java Edition.
 3. Start the app. Without the files it shows where it looked.
 
 The app's Documents folder is the game folder, so saves, `options.txt`, screenshots and
-`controlmap/` (the touch control layouts) are there. Logs and crash reports are under
-Application Support.
+`controlmap/` (the touch control layouts) are there. In LiveContainer it's the app's data
+folder (LiveContainer → Data → Application → Horizon's folder → Documents).
+
+**If it crashes,** send `Documents/horizon-log.txt` (this launch's output; the last launch's is
+`horizon-log.previous.txt`), anything in `Documents/horizon/` (logs and crash reports), and the
+iOS crash report: Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
+the newest `Horizon-…` or, under LiveContainer, `LiveContainer-…` entry.
 
 ## Controls
 

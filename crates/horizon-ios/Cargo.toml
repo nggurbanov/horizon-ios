@@ -18,6 +18,8 @@ horizon-game = { path = "../horizon-game" }
 horizon-official = { path = "../horizon-official" }
 horizon-client-input = { path = "../horizon-client-input" }
 winit = "0.30.13"
+# Runs the game on a desktop-sized stack: iOS gives the main thread 1 MiB (src/main.rs).
+stacker = "0.1"
 
 [build-dependencies]
 cc = "1"
