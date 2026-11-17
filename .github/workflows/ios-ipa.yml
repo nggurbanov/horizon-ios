@@ -7,9 +7,10 @@ on:
   push:
     branches: [main]
 
+# Runs don't cancel each other: a failed build still saves its compiled dependencies for the
+# next one. Public-repo runner minutes are free.
 concurrency:
-  group: ios-ipa-${{ github.ref }}
-  cancel-in-progress: true
+  group: ios-ipa-${{ github.sha }}
 
 permissions:
   contents: write

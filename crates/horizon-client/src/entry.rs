@@ -24,6 +24,8 @@ impl Startup {
 /// and resource marker metadata only: no logging, account loading, mods or worker threads.
 /// Account IO, cwd changes and command registration remain in Options::read, after leases.
 pub fn prepare() -> Startup {
+    // horizon-ios: iOS can't start processes, so there's no holder there.
+    #[cfg(not(target_os = "ios"))]
     horizon_mod_package::holder::enter();
     let result: crate::Result<_> = (|| {
         let mut command = std::process::Command::new(std::env::current_exe()?);
@@ -39,7 +41,10 @@ pub fn prepare() -> Startup {
     let Some(options) = options else {
         std::process::exit(0);
     };
+    #[cfg(not(target_os = "ios"))]
     let capture = horizon_mod_package::holder::acquire(&launch);
+    #[cfg(target_os = "ios")]
+    let capture = None;
     Startup {
         launch,
         options,
