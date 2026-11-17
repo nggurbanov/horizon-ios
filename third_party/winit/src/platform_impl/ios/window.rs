@@ -373,16 +373,10 @@ impl Inner {
     /// requesting focus for the [WinitView]. Since [WinitView] implements
     /// [objc2_ui_kit::UIKeyInput], the keyboard will be shown.
     /// <https://developer.apple.com/documentation/uikit/uiresponder/1621113-becomefirstresponder>
-    pub fn set_ime_allowed(&self, allowed: bool) {
-        if allowed {
-            unsafe {
-                self.view.becomeFirstResponder();
-            }
-        } else {
-            unsafe {
-                self.view.resignFirstResponder();
-            }
-        }
+    pub fn set_ime_allowed(&self, _allowed: bool) {
+        // horizon-ios: the touch overlay owns the keyboard (crates/horizon-ios/objc: a two-finger
+        // hold shows it) and the hardware keys (it stays first responder). A text box taking
+        // focus made this view first responder and put the system keyboard over the screen.
     }
 
     pub fn set_ime_purpose(&self, _purpose: ImePurpose) {
