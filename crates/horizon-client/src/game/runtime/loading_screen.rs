@@ -257,6 +257,8 @@ impl Loading {
         // The loop may run once more after exit(): keep the first error, the
         // one that ended loading.
         if self.error.is_some() {
+            #[cfg(target_os = "ios")]
+            ios_stop(self.error.as_deref());
             event_loop.exit();
             return;
         }
@@ -586,4 +588,19 @@ pub(super) fn unclean_start_recovery(settings: &mut Settings) -> bool {
         settings.file.fullscreen_resolution = None;
     }
     unclean
+}
+
+/// horizon-ios: iOS ignores `exit()` (winit's iOS event loop never returns), so the error that
+/// ended the game, reported after the loop on desktop, would never show and the screen would
+/// stay frozen on its last frame. Write it to the log (`Documents/horizon-log.txt`) and stop.
+#[cfg(target_os = "ios")]
+pub(in crate::game) fn ios_stop(error: Option<&dyn std::error::Error>) -> ! {
+    match error {
+        Some(error) => {
+            log::error!("Horizon stopped: {error}");
+            eprintln!("Horizon stopped: {error}");
+        }
+        None => eprintln!("Horizon stopped"),
+    }
+    std::process::exit(if error.is_some() { 1 } else { 0 })
 }

@@ -76,6 +76,11 @@ impl Game<'_> {
     /// An error stops the event loop, as ever, but not in another splitscreen player's game:
     /// that player drops out (`Split::drop_out`), the others play on.
     pub(in crate::game) fn exit_on_error(&self, event_loop: &dyn super::event_loop::EventLoopCtl) {
+        // horizon-ios: iOS ignores exit(); log the error and stop (loading_screen::ios_stop).
+        #[cfg(target_os = "ios")]
+        if !self.options.split_guest {
+            super::loading_screen::ios_stop(self.error.as_deref());
+        }
         if !self.options.split_guest {
             event_loop.exit();
         }
