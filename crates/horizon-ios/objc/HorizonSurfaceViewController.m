@@ -313,6 +313,9 @@ static int keycodeAt(ControlButton *button, int i) {
     overlay.frame = gameView.bounds;
     overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [gameView addSubview:overlay];
+    // horizon-ios: wgpu adds its CAMetalLayer to the game view's layer after this, as a sibling
+    // of the overlay's: without a higher z it drew over the controls (which still took touches).
+    overlay.layer.zPosition = 1000;
     if (parent != nil && parent != self) {
         [self didMoveToParentViewController:parent];
     }
