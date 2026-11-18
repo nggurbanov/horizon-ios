@@ -86,9 +86,14 @@ static HorizonSurfaceViewController *currentOverlay;
 
 @end
 
+// horizon-ios: HangWatchdog.m, which writes every thread's stack to the log when these stop.
+void horizon_ios_heartbeat(void);
+void horizon_ios_start_watchdog(void);
+
 @implementation HorizonDisplayLinkProxy
 
 - (void)tick:(CADisplayLink *)link {
+    horizon_ios_heartbeat();
     HorizonSurfaceViewController *owner = self.owner;
     if (owner == nil) {
         [link invalidate];
@@ -1034,6 +1039,7 @@ static int keycodeAt(ControlButton *button, int i) {
 
 void horizon_ios_attach_overlay(void *ui_view) {
     NSLog(@"horizon-ios: attaching the overlay (main thread %d)", NSThread.isMainThread);
+    horizon_ios_start_watchdog();
     if (ui_view == NULL) {
         return;
     }
