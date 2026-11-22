@@ -1,88 +1,55 @@
+# Horizon iOS
+
 > [!IMPORTANT]
-> **horizon-ios is an unofficial fork** of [Horizon](https://github.com/horizon-rust/horizon) that ports it to iOS as a native app. It is not affiliated with or endorsed by the Horizon Team, Mojang or Microsoft. Please report bugs in this fork here, not upstream.
+> **Unofficial native iOS port** of [Horizon](https://github.com/horizon-rust/horizon) (Minecraft: Java Edition 26.3 rewritten in Rust — native arm64 + Metal, **no JVM, no JIT**). Not affiliated with or endorsed by the Horizon Team, Mojang, or Microsoft. Report issues in this repository, not upstream.
 >
-> **Licence:** Horizon's own files keep their [LGPL-3.0-or-later](LICENSE) licence. The iOS app also includes code from [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS), which is [GPL-3.0](LICENSES/GPL-3.0.txt). Because of that, the iOS app as a whole is distributed under the GPL-3.0.
+> **Heads up:** This iOS port is **entirely vibe-coded (AI-built) and very experimental** — expect bugs and rough edges, and back up your worlds before playing.
 >
-> As with upstream, you need your own copy of Minecraft: Java Edition. This fork ships no Mojang files.
+> **License:** [LGPL-3.0-or-later](LICENSE). Ships zero Mojang files — you need your own copy of Minecraft: Java Edition 26.3.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/title-dark.png">
-    <img src="docs/media/readme/title-light.png" alt="Horizon" width="320">
-  </picture>
-</p>
+## What's included
 
-<p align="center">
-  <b>Minecraft: Java Edition 26.3, rewritten from scratch in Rust.</b><br>
-  It opens your worlds, generates the same terrain and plays by the same rules, without Java.
-</p>
+- **Native Rust AOT + Metal:** Runs directly on arm64 iOS 15+ (A12 chip or newer recommended) with **no JVM, no JIT, and no StikDebug required**.
+- **Bedrock-style native UIKit controls + instant input switching:** 1:1 mobile Bedrock touch controls with 3 schemes (Joystick + Crosshair, Joystick + Tap to Interact, Classic D-Pad), contextual Fly/Swim/Elytra/Dismount buttons, haptics, and optional gyro — switching immediately to Game Controllers (`GCController` + `CoreHaptics`) or Bluetooth/USB Mouse & Keyboard (`GCMouse`/`GCKeyboard` + pointer lock) the moment you press a button or move the mouse.
+- **Native UIKit landscape Pre-Launcher:** 1-tap quick-join for servers and local worlds, live server ping, per-server Auto-Login command templates stored in Keychain, pre-launch `options.txt` graphics presets, in-app resource/resource-pack/shader importer, built-in log viewer & share sheet, automatic EN/RU localization, and a Skip Launcher toggle.
+- **Built-in OTA updates:** AltStore Source v2 feed (`source.json`) with 1-tap updates via **Feather**, **SideStore**, **AltStore**, or direct `.ipa` download in Safari.
 
-<p align="center">
-  <a href="https://playhorizon.dev/download"><img src="docs/media/readme/download-button.png" alt="Download the Horizon launcher for Windows, macOS and Linux" width="400"></a><br>
-  <sub>You need your own copy of Minecraft: Java Edition.</sub>
-</p>
+## Install (OTA & Direct `.ipa`)
 
-<p align="center">
-  <a href="https://playhorizon.dev/docs/install"><b>Install guide</b></a> ·
-  <a href="https://playhorizon.dev/docs/"><b>Docs</b></a> ·
-  <a href="https://playhorizon.dev/mods"><b>Mods</b></a> ·
-  <a href="https://discord.gg/playhorizon"><b>Discord</b></a>
-</p>
+- **OTA Source JSON (AltStore Source v2):**
+  ```text
+  https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/source.json
+  ```
+- **Feather:** Add the Source JSON URL above, or open `feather://source/https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/source.json` on your device.
+- **SideStore:** Add the Source JSON URL above, or open `sidestore://source?url=https%3A%2F%2Fgithub.com%2Fnggurbanov%2Fhorizon-ios%2Freleases%2Fdownload%2Fios-latest%2Fsource.json`.
+- **AltStore:** Add the Source JSON URL above, or open `altstore://source?url=https%3A%2F%2Fgithub.com%2Fnggurbanov%2Fhorizon-ios%2Freleases%2Fdownload%2Fios-latest%2Fsource.json`.
+- **LiveContainer / Direct `.ipa`:** Download `Horizon.ipa` directly from the [`ios-latest` release](https://github.com/nggurbanov/horizon-ios/releases/tag/ios-latest).
 
-<p align="center">
-  <img src="docs/media/readme/hero-lookout.webp" alt="A player's view from a wooden lookout over a village: a friend in diamond armour sneaks at the edge while a creeper flashes white behind her, another friend rides a horse between the houses below, and forest, snowy peaks and the sea run to the horizon" width="100%">
-</p>
+> [!NOTE]
+> **`increased-memory-limit` entitlement:** Paid signing certificates, **Feather**, **AltStore 2.2+**, **LiveContainer**, and **TrollStore** preserve `com.apple.developer.kernel.increased-memory-limit` automatically. On **SideStore** with a free Apple ID, add the entitlement with [GetMoreRam](https://github.com/hugeBlack/GetMoreRam) before reinstalling so iOS doesn't cap RAM at half the device's memory.
 
-<p align="center">
-  <img src="docs/media/readme/signs.webp" alt="Three wooden signs: 3.5x faster start than modded Java, 38 percent more FPS than Java with Sodium, and a mod API to port your mods to Rust" width="100%">
-</p>
+## Game Assets
 
-<p align="center">
-  <sub>Against Java Edition with Sodium, Lithium, FerriteCore and ImmediatelyFast on a Ryzen 7 9800X3D with an RTX 5080. More computers on the <a href="https://playhorizon.dev/benchmarks">benchmarks page</a>.</sub>
-</p>
+This app ships zero Mojang files. Prepare assets once from your own copy of Minecraft: Java Edition 26.3:
 
-<h2 align="center">What you get</h2>
+1. Run official desktop [Horizon](https://playhorizon.dev) once on a PC/Mac with your copy of Minecraft: Java Edition 26.3 so it prepares the `26.3` folder (or run `horizon-prepare --prepare` from source — see [docs/native-client.md](docs/native-client.md)).
+2. Compress that `26.3` folder to a `.zip` and send it to your iPhone (AirDrop, iCloud Drive, or Files).
+3. Open Horizon on iPhone → **Files → Import…** and select the `.zip` (or the uncompressed folder).
 
-- **Vanilla Minecraft:** survival, creative and hardcore in every dimension, with the same terrain, mobs, villagers and redstone. Your saves open as they are.
-- **Multiplayer:** vanilla and Horizon servers, LAN, and invite codes for playing your world with friends. You can [host a server](https://playhorizon.dev/docs/hosting) too.
-- **Mods:** Horizon's own mod system, with mods like zoom and a minimap, and shader packs. Browse the [catalogue](https://playhorizon.dev/mods) or [make a mod](https://playhorizon.dev/docs/make-a-mod).
-- **Beyond vanilla:** terrain up to 1,024 chunks away, HDR, controller support, graphics presets and dynamic lights.
+## Current limitations
 
-<h2 align="center">What you need</h2>
+- Singleplayer, LAN, and offline-mode servers work today. Microsoft online sign-in is not enabled in this fork because upstream Horizon's Azure App ID is reserved for official builds ([docs/forking.md](docs/forking.md)).
+- Requires iOS 15 or later (A12 chip or newer recommended).
+- WebAssembly code mods aren't enabled on iOS yet (no JIT).
 
-- **Your own copy of Minecraft: Java Edition.** Horizon ships no Minecraft files. It builds them from the game you bought, so install version 26.3 and start it once.
-- **Windows, macOS or Linux:** Windows on x64 or ARM64, macOS 12 or later, Linux on x86-64.
+## Upstream & technical docs
 
-<h2 align="center">Made by the Horizon Team</h2>
+All of the underlying Rust Minecraft engine is built by the **Horizon Team** ([horizon-rust/horizon](https://github.com/horizon-rust/horizon) · [playhorizon.dev](https://playhorizon.dev)).
 
-<table align="center">
-  <tr>
-    <td align="center" width="140"><a href="https://github.com/kacpherek"><img src="https://github.com/kacpherek.png?size=160" width="80" alt="Kacper"><br><b>Kacper</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/Online5277"><img src="https://github.com/Online5277.png?size=160" width="80" alt="Cosmic"><br><b>Cosmic</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/levzzz5154"><img src="https://github.com/levzzz5154.png?size=160" width="80" alt="levzzz"><br><b>levzzz</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/rdbtCVS"><img src="https://github.com/rdbtCVS.png?size=160" width="80" alt="rdbt"><br><b>rdbt</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/dezer-x"><img src="https://github.com/dezer-x.png?size=160" width="80" alt="Anthony S"><br><b>Anthony S</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/NikitaMGrimm"><img src="https://github.com/NikitaMGrimm.png?size=160" width="80" alt="Nikita"><br><b>Nikita</b></a></td>
-    <td align="center" width="140"><a href="https://github.com/ludovic111"><img src="https://github.com/ludovic111.png?size=160" width="80" alt="Ludovic Marie"><br><b>Ludovic Marie</b></a><br><sub>Founder</sub></td>
-  </tr>
-</table>
+See **[HORIZON-IOS.md](HORIZON-IOS.md)** for the full controls breakdown, Pre-Launcher & Auto-Login details, architecture map, crash-report instructions, and building from source.
 
-<p align="center">
-  <sub>and everyone who has contributed</sub><br><br>
-  <a href="https://github.com/horizon-rust/horizon/graphs/contributors"><img src="https://contrib.rocks/image?repo=horizon-rust/horizon&max=72&columns=12" alt="Everyone who has contributed to Horizon"></a>
-</p>
+---
 
-<p align="center">
-  <a href="https://blacksmith.sh"><img src="docs/media/readme/blacksmith.png" alt="CI powered by Blacksmith" width="280"></a>
-</p>
-
-<p align="center">
-  <a href="docs/native-client.md#run-from-a-checkout"><b>Build guide</b></a> ·
-  <a href="CONTRIBUTING.md"><b>Contributing</b></a> ·
-  <a href="GOVERNANCE.md"><b>Governance</b></a> ·
-  <a href="https://github.com/sponsors/ludovic111"><b>Sponsor</b></a>
-</p>
-
-<sub>Horizon is released under the [GNU LGPL, version 3 or later](LICENSE), for the project's original work. Code merged before the move from MIT stays available under the [MIT licence](LICENSES/MIT.txt). Dependencies keep their own licences, see the [notices](THIRD_PARTY_NOTICES.md). Founded by [Ludovic Marie](https://lu4ovic.com) and built by the Horizon Team and [its contributors](https://github.com/horizon-rust/horizon/graphs/contributors). You can support it on [GitHub Sponsors](https://github.com/sponsors/ludovic111).</sub>
+<sub>Horizon and `horizon-ios` are distributed under the [GNU LGPL, version 3 or later](LICENSE). Third-party dependencies keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).</sub>
 
 <sub>NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT. Minecraft is a trademark of Mojang Synergies AB; its code and assets belong to Mojang and Microsoft under the [Minecraft EULA](https://www.minecraft.net/en-us/eula).</sub>

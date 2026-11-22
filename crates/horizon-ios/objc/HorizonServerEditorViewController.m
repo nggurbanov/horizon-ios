@@ -2,6 +2,7 @@
 #import "HorizonServerEditorViewController.h"
 #import "HorizonAutoLoginStore.h"
 #import "HorizonIcons.h"
+#import "HorizonL10n.h"
 #include "horizon_bridge.h"
 
 static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
@@ -67,7 +68,7 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     UIButton *cancelBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     cancelBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [cancelBtn setTitle:@"Отмена" forState:UIControlStateNormal];
+    [cancelBtn setTitle:HL(@"Cancel", @"Отмена") forState:UIControlStateNormal];
     [cancelBtn setTitleColor:he_color(152, 166, 184, 1.0) forState:UIControlStateNormal];
     cancelBtn.titleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightMedium];
     [cancelBtn addTarget:self action:@selector(onCancel) forControlEvents:UIControlEventTouchUpInside];
@@ -75,14 +76,14 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = (self.serverIndex >= 0) ? @"Изменить сервер" : @"Новый сервер";
+    titleLabel.text = (self.serverIndex >= 0) ? HL(@"Edit Server", @"Изменить сервер") : HL(@"Add Server", @"Новый сервер");
     titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightBold];
     titleLabel.textColor = he_color(242, 246, 250, 1.0);
     [header addSubview:titleLabel];
 
     UIButton *saveBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     saveBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [saveBtn setTitle:@"Сохранить" forState:UIControlStateNormal];
+    [saveBtn setTitle:HL(@"Save", @"Сохранить") forState:UIControlStateNormal];
     [saveBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     saveBtn.backgroundColor = he_color(51, 189, 102, 1.0);
     saveBtn.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
@@ -144,7 +145,7 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     [stack addArrangedSubview:self.errorLabel];
 
     // Section 1: Server details
-    [stack addArrangedSubview:[self sectionHeader:@"СЕРВЕР"]];
+    [stack addArrangedSubview:[self sectionHeader:HL(@"SERVER", @"СЕРВЕР")]];
 
     UIView *serverCard = [self cardView];
     UIStackView *serverStack = [[UIStackView alloc] init];
@@ -159,23 +160,23 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
         [serverStack.bottomAnchor constraintEqualToAnchor:serverCard.bottomAnchor constant:-12.0],
     ]];
 
-    self.nameField = [self styledTextFieldWithPlaceholder:@"Например, Survival"];
+    self.nameField = [self styledTextFieldWithPlaceholder:HL(@"e.g. Survival", @"Например, Survival")];
     self.nameField.text = self.initialName;
     self.nameField.returnKeyType = UIReturnKeyNext;
-    [serverStack addArrangedSubview:[self labeledFieldRow:@"Название" field:self.nameField]];
+    [serverStack addArrangedSubview:[self labeledFieldRow:HL(@"Name", @"Название") field:self.nameField]];
 
-    self.addressField = [self styledTextFieldWithPlaceholder:@"play.example.com или host:port"];
+    self.addressField = [self styledTextFieldWithPlaceholder:HL(@"play.example.com or host:port", @"play.example.com или host:port")];
     self.addressField.text = self.initialAddress;
     self.addressField.keyboardType = UIKeyboardTypeURL;
     self.addressField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.addressField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.addressField.returnKeyType = UIReturnKeyDone;
-    [serverStack addArrangedSubview:[self labeledFieldRow:@"Адрес" field:self.addressField]];
+    [serverStack addArrangedSubview:[self labeledFieldRow:HL(@"Address", @"Адрес") field:self.addressField]];
 
     [stack addArrangedSubview:serverCard];
 
     // Section 2: Auto-Login
-    [stack addArrangedSubview:[self sectionHeader:@"АВТОЛОГИН ПРИ ВХОДЕ"]];
+    [stack addArrangedSubview:[self sectionHeader:HL(@"AUTO-LOGIN ON JOIN", @"АВТОЛОГИН ПРИ ВХОДЕ")]];
 
     UIView *autoCard = [self cardView];
     UIStackView *autoStack = [[UIStackView alloc] init];
@@ -199,7 +200,7 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     UILabel *toggleLabel = [[UILabel alloc] init];
     toggleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    toggleLabel.text = @"Включить автологин";
+    toggleLabel.text = HL(@"Enable Auto-Login", @"Включить автологин");
     toggleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold];
     toggleLabel.textColor = he_color(242, 246, 250, 1.0);
     [toggleRow addSubview:toggleLabel];
@@ -236,7 +237,7 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     self.templateField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.templateField.autocorrectionType = UITextAutocorrectionTypeNo;
     [self.templateField addTarget:self action:@selector(refreshPresetHighlight) forControlEvents:UIControlEventEditingChanged];
-    [bodyStack addArrangedSubview:[self labeledFieldRow:@"Шаблон команды" field:self.templateField]];
+    [bodyStack addArrangedSubview:[self labeledFieldRow:HL(@"Command Template", @"Шаблон команды") field:self.templateField]];
 
     // 3 quick preset pills
     NSArray<NSString *> *presets = @[@"/l {password}", @"/login {password}", @"/auth {password}"];
@@ -264,8 +265,8 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     // Password field with eye toggle
     NSString *pwPlaceholder = self.existingHasPassword
-        ? @"Пароль сохранён (введите новый для замены)"
-        : @"Введите пароль";
+        ? HL(@"Password saved (enter new to replace)", @"Пароль сохранён (введите новый для замены)")
+        : HL(@"Enter password", @"Введите пароль");
     self.passwordField = [self styledTextFieldWithPlaceholder:pwPlaceholder];
     self.passwordField.secureTextEntry = YES;
     self.passwordField.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -279,16 +280,21 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     [self.eyeButton addTarget:self action:@selector(onTogglePasswordVisibility) forControlEvents:UIControlEventTouchUpInside];
     self.passwordField.rightView = self.eyeButton;
     self.passwordField.rightViewMode = UITextFieldViewModeAlways;
-    [bodyStack addArrangedSubview:[self labeledFieldRow:@"Пароль" field:self.passwordField]];
+    [bodyStack addArrangedSubview:[self labeledFieldRow:HL(@"Password", @"Пароль") field:self.passwordField]];
 
     // Delay segmented picker
     UILabel *delayLabel = [[UILabel alloc] init];
-    delayLabel.text = @"Задержка после входа в мир";
+    delayLabel.text = HL(@"Delay After Joining World", @"Задержка после входа в мир");
     delayLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
     delayLabel.textColor = he_color(152, 166, 184, 1.0);
     [bodyStack addArrangedSubview:delayLabel];
 
-    self.delayControl = [[UISegmentedControl alloc] initWithItems:@[@"0.5с", @"1.0с", @"2.0с", @"3.0с"]];
+    self.delayControl = [[UISegmentedControl alloc] initWithItems:@[
+        HL(@"0.5s", @"0.5с"),
+        HL(@"1.0s", @"1.0с"),
+        HL(@"2.0s", @"2.0с"),
+        HL(@"3.0s", @"3.0с"),
+    ]];
     self.delayControl.selectedSegmentTintColor = he_color(51, 189, 102, 1.0);
     self.delayControl.backgroundColor = he_color(34, 43, 55, 1.0);
     [self.delayControl setTitleTextAttributes:@{NSForegroundColorAttributeName: he_color(186, 198, 214, 1.0), NSFontAttributeName: [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium]} forState:UIControlStateNormal];
@@ -303,7 +309,8 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     // Privacy note
     UILabel *privacyNote = [[UILabel alloc] init];
-    privacyNote.text = @"Пароль хранится локально в Keychain и никогда не записывается в логи или историю чата.";
+    privacyNote.text = HL(@"Password is stored locally in the iOS Keychain and is never written to logs or chat history.",
+                          @"Пароль хранится локально в Keychain и никогда не записывается в логи или историю чата.");
     privacyNote.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
     privacyNote.textColor = he_color(109, 123, 142, 1.0);
     privacyNote.numberOfLines = 0;
@@ -319,7 +326,7 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
         deleteBtn.layer.cornerRadius = 10.0;
         deleteBtn.layer.borderWidth = 1.0;
         deleteBtn.layer.borderColor = he_color(229, 83, 75, 0.35).CGColor;
-        [deleteBtn setTitle:@"Удалить сервер" forState:UIControlStateNormal];
+        [deleteBtn setTitle:HL(@"Delete Server", @"Удалить сервер") forState:UIControlStateNormal];
         [deleteBtn setTitleColor:he_color(245, 114, 107, 1.0) forState:UIControlStateNormal];
         [deleteBtn setImage:[HorizonIcons iconForKind:HorizonIconTrash pointSize:16.0] forState:UIControlStateNormal];
         deleteBtn.tintColor = he_color(245, 114, 107, 1.0);
@@ -477,7 +484,8 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     NSString *addr = [self.addressField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *name = [self.nameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (addr.length == 0 || [HorizonAutoLoginStore normalizeAddress:addr] == nil) {
-        [self showError:@"Введите корректный адрес сервера (например, play.example.com или host:port)."];
+        [self showError:HL(@"Enter a valid server address (e.g. play.example.com or host:port).",
+                           @"Введите корректный адрес сервера (например, play.example.com или host:port).")];
         return;
     }
     if (name.length == 0) {
@@ -487,7 +495,8 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     BOOL autoOn = self.autoLoginSwitch.isOn;
     NSString *newPw = self.passwordField.text ?: @"";
     if (autoOn && newPw.length == 0 && !self.existingHasPassword) {
-        [self showError:@"Для автологина укажите пароль сервера."];
+        [self showError:HL(@"Enter a server password to enable Auto-Login.",
+                           @"Для автологина укажите пароль сервера.")];
         return;
     }
 
@@ -501,7 +510,9 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
         sizeof(errBuf)
     );
     if (!ok) {
-        NSString *msg = (errBuf[0] != '\0') ? [NSString stringWithUTF8String:errBuf] : @"Не удалось сохранить servers.dat";
+        NSString *msg = (errBuf[0] != '\0')
+            ? [NSString stringWithUTF8String:errBuf]
+            : HL(@"Failed to save servers.dat.", @"Не удалось сохранить servers.dat.");
         [self showError:msg];
         return;
     }
@@ -532,12 +543,13 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 }
 
 - (void)onDeleteTapped {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Удалить сервер?"
-                                                                   message:@"Сервер и его сохранённый пароль автологина будут удалены."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:HL(@"Delete Server?", @"Удалить сервер?")
+                                                                   message:HL(@"This server and its saved Auto-Login password will be removed.",
+                                                                              @"Сервер и его сохранённый пароль автологина будут удалены.")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
     __weak typeof(self) weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:@"Удалить" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+    [alert addAction:[UIAlertAction actionWithTitle:HL(@"Delete", @"Удалить") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
         (void)action;
         typeof(self) strongSelf = weakSelf;
         if (strongSelf == nil) return;
@@ -551,7 +563,9 @@ static UIColor *he_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
                 if (cb) cb();
             }];
         } else {
-            NSString *msg = (errBuf[0] != '\0') ? [NSString stringWithUTF8String:errBuf] : @"Ошибка удаления";
+            NSString *msg = (errBuf[0] != '\0')
+                ? [NSString stringWithUTF8String:errBuf]
+                : HL(@"Failed to delete server.", @"Ошибка удаления.");
             [strongSelf showError:msg];
         }
     }]];

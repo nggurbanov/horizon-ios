@@ -1,6 +1,7 @@
 // horizon-ios: native OTA updater supporting Feather, SideStore, AltStore, and Safari fallback
 // backed by an AltStore/Feather Source v2 JSON manifest.
 #import "HorizonOTAUpdater.h"
+#import "HorizonL10n.h"
 #include "horizon_bridge.h"
 
 NSNotificationName const HorizonOTAStateDidChangeNotification = @"HorizonOTAStateDidChangeNotification";
@@ -107,7 +108,7 @@ static NSString * const kDefaultBundleID = @"io.github.nggurbanov.horizon-ios";
         case HorizonOTAInstallerAltStore:  return @"AltStore";
         case HorizonOTAInstallerDirect:    return @"Safari";
         case HorizonOTAInstallerAuto:
-        default:                           return @"Авто";
+        default:                           return HL(@"Auto", @"Авто");
     }
 }
 
@@ -142,7 +143,7 @@ static NSString * const kDefaultBundleID = @"io.github.nggurbanov.horizon-ios";
     if (url == nil || (![url.scheme.lowercaseString isEqualToString:@"https"] &&
                        ![url.scheme.lowercaseString isEqualToString:@"http"])) {
         self.status = HorizonOTAStatusError;
-        self.lastErrorMessage = @"Некорректный URL источника source.json";
+        self.lastErrorMessage = HL(@"Invalid source.json URL", @"Некорректный URL источника source.json");
         [self postStateChanged];
         return;
     }
@@ -191,14 +192,14 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
     NSError *jsonErr = nil;
     id root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
     if (jsonErr != nil || ![root isKindOfClass:NSDictionary.class]) {
-        *outErr = @"Некорректный JSON манифест source.json";
+        *outErr = HL(@"Invalid source.json manifest", @"Некорректный JSON-манифест source.json");
         return nil;
     }
 
     NSDictionary *manifest = (NSDictionary *)root;
     NSArray *apps = [manifest[@"apps"] isKindOfClass:NSArray.class] ? manifest[@"apps"] : nil;
     if (apps.count == 0) {
-        *outErr = @"В source.json отсутствует список приложений";
+        *outErr = HL(@"No apps found in source.json", @"В source.json отсутствует список приложений");
         return nil;
     }
 
@@ -216,7 +217,7 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
         matchedApp = (NSDictionary *)apps.firstObject;
     }
     if (matchedApp == nil) {
-        *outErr = @"Запись Horizon не найдена в source.json";
+        *outErr = HL(@"Horizon entry not found in source.json", @"Запись Horizon не найдена в source.json");
         return nil;
     }
 
@@ -253,7 +254,7 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
     NSString *minOS = latestEntry ? ota_stringField(latestEntry, @"minOSVersion") : @"";
 
     if (ver.length == 0 || dlURL.length == 0) {
-        *outErr = @"В source.json не указаны версия или downloadURL";
+        *outErr = HL(@"Missing version or downloadURL in source.json", @"В source.json не указаны версия или downloadURL");
         return nil;
     }
 
@@ -280,17 +281,17 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
     NSString *errText = nil;
 
     if (error != nil) {
-        errText = error.localizedDescription ?: @"Нет соединения с сервером";
+        errText = error.localizedDescription ?: HL(@"Unable to reach update server", @"Нет соединения с сервером");
     } else if ([response isKindOfClass:NSHTTPURLResponse.class]) {
         NSInteger code = ((NSHTTPURLResponse *)response).statusCode;
         if (code < 200 || code >= 300) {
-            errText = [NSString stringWithFormat:@"Сервер вернул HTTP %ld", (long)code];
+            errText = [NSString stringWithFormat:HL(@"Server returned HTTP %ld", @"Сервер вернул HTTP %ld"), (long)code];
         }
     }
 
     if (errText == nil) {
         if (data.length == 0) {
-            errText = @"Пустой ответ от сервера обновлений";
+            errText = HL(@"Empty response from update server", @"Пустой ответ от сервера обновлений");
         } else {
             parsed = [self parseSourceJSON:data errorMessage:&errText];
         }
@@ -303,7 +304,7 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
 
         if (parsed == nil) {
             self.status = HorizonOTAStatusError;
-            self.lastErrorMessage = errText ?: @"Не удалось проверить обновления";
+            self.lastErrorMessage = errText ?: HL(@"Failed to check for updates", @"Не удалось проверить обновления");
             [self postStateChanged];
             return;
         }
@@ -329,10 +330,10 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
                       sourceView:(nullable UIView *)sourceView {
     NSURL *targetURL = [HorizonOTAUpdater installURLForInstaller:installer ipaURL:ipaURL];
     if (targetURL == nil) {
-        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Ошибка ссылки"
-                                                                   message:@"Некорректный адрес .ipa для установки."
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:HL(@"Invalid Link", @"Ошибка ссылки")
+                                                                   message:HL(@"Invalid .ipa download URL.", @"Некорректный адрес .ipa для установки.")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"ОК" style:UIAlertActionStyleDefault handler:nil]];
+        [a addAction:[UIAlertAction actionWithTitle:HL(@"OK", @"ОК") style:UIAlertActionStyleDefault handler:nil]];
         [vc presentViewController:a animated:YES completion:nil];
         return;
     }
@@ -348,16 +349,16 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
             if (strongVC == nil || s == nil) return;
 
             NSString *appName = [HorizonOTAUpdater displayNameForInstaller:installer];
-            NSString *title = [NSString stringWithFormat:@"Не удалось открыть %@", appName];
+            NSString *title = [NSString stringWithFormat:HL(@"Couldn't Open %@", @"Не удалось открыть %@"), appName];
             NSString *msg = (installer == HorizonOTAInstallerDirect)
-                ? @"Не удалось открыть ссылку загрузки в Safari."
-                : [NSString stringWithFormat:@"Убедитесь, что %@ установлен на устройстве, либо скачайте .ipa через Safari или выберите другой установщик.", appName];
+                ? HL(@"Couldn't open the download link in Safari.", @"Не удалось открыть ссылку загрузки в Safari.")
+                : [NSString stringWithFormat:HL(@"Make sure %@ is installed on this device, download the .ipa in Safari, or choose another installer.", @"Убедитесь, что %@ установлен на устройстве, либо скачайте .ipa через Safari или выберите другой установщик."), appName];
 
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                            message:msg
                                                                     preferredStyle:UIAlertControllerStyleAlert];
             if (installer != HorizonOTAInstallerDirect) {
-                [alert addAction:[UIAlertAction actionWithTitle:@"Скачать .ipa (Safari)"
+                [alert addAction:[UIAlertAction actionWithTitle:HL(@"Download .ipa in Safari", @"Скачать .ipa (Safari)")
                                                           style:UIAlertActionStyleDefault
                                                         handler:^(UIAlertAction * _Nonnull action) {
                     (void)action;
@@ -366,7 +367,7 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
                              fromViewController:strongVC
                                      sourceView:weakSource];
                 }]];
-                [alert addAction:[UIAlertAction actionWithTitle:@"Выбрать установщик"
+                [alert addAction:[UIAlertAction actionWithTitle:HL(@"Choose Installer", @"Выбрать установщик")
                                                           style:UIAlertActionStyleDefault
                                                         handler:^(UIAlertAction * _Nonnull action) {
                     (void)action;
@@ -375,7 +376,7 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
                                            sourceView:weakSource];
                 }]];
             }
-            [alert addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+            [alert addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
             [strongVC presentViewController:alert animated:YES completion:nil];
         });
     }];
@@ -386,10 +387,10 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
                             sourceView:(nullable UIView *)sourceView {
     NSString *ver = self.latestRelease.version ?: @"";
     NSString *title = (ver.length > 0)
-        ? [NSString stringWithFormat:@"Установить Horizon %@", ver]
-        : @"Установить обновление Horizon";
+        ? [NSString stringWithFormat:HL(@"Install Horizon %@", @"Установить Horizon %@"), ver]
+        : HL(@"Install Horizon Update", @"Установить обновление Horizon");
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:title
-                                                                   message:@"Выберите способ установки .ipa"
+                                                                   message:HL(@"Choose how to install the .ipa", @"Выберите способ установки .ipa")
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf = self;
     __weak UIViewController *weakVC = vc;
@@ -409,11 +410,11 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
         }]];
     };
 
-    addChoice(@"Установить через Feather", HorizonOTAInstallerFeather);
-    addChoice(@"Установить через SideStore", HorizonOTAInstallerSideStore);
-    addChoice(@"Установить через AltStore", HorizonOTAInstallerAltStore);
-    addChoice(@"Скачать .ipa (Safari)", HorizonOTAInstallerDirect);
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+    addChoice(HL(@"Install via Feather", @"Установить через Feather"), HorizonOTAInstallerFeather);
+    addChoice(HL(@"Install via SideStore", @"Установить через SideStore"), HorizonOTAInstallerSideStore);
+    addChoice(HL(@"Install via AltStore", @"Установить через AltStore"), HorizonOTAInstallerAltStore);
+    addChoice(HL(@"Download .ipa in Safari", @"Скачать .ipa (Safari)"), HorizonOTAInstallerDirect);
+    [sheet addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
 
     if (sheet.popoverPresentationController != nil) {
         UIView *anchor = sourceView ?: vc.view;
@@ -430,10 +431,10 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
 - (void)installUpdateFromViewController:(UIViewController *)vc sourceView:(nullable UIView *)sourceView {
     NSString *ipaURL = self.latestRelease.downloadURL;
     if (ipaURL.length == 0) {
-        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Нет данных об обновлении"
-                                                                   message:@"Сначала выполните проверку обновлений."
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:HL(@"No Update Info", @"Нет данных об обновлении")
+                                                                   message:HL(@"Check for updates first.", @"Сначала выполните проверку обновлений.")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"ОК" style:UIAlertActionStyleDefault handler:nil]];
+        [a addAction:[UIAlertAction actionWithTitle:HL(@"OK", @"ОК") style:UIAlertActionStyleDefault handler:nil]];
         [vc presentViewController:a animated:YES completion:nil];
         return;
     }
@@ -470,10 +471,10 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
     NSString *srcURL = HorizonSettings.shared.otaSourceURL;
     NSURL *targetURL = [HorizonOTAUpdater sourceURLForInstaller:installer sourceURL:srcURL];
     if (targetURL == nil) {
-        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Некорректный URL"
-                                                                   message:@"Проверьте адрес source.json в настройках OTA."
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:HL(@"Invalid URL", @"Некорректный URL")
+                                                                   message:HL(@"Check the source.json URL in OTA settings.", @"Проверьте адрес source.json в настройках OTA.")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"ОК" style:UIAlertActionStyleDefault handler:nil]];
+        [a addAction:[UIAlertAction actionWithTitle:HL(@"OK", @"ОК") style:UIAlertActionStyleDefault handler:nil]];
         [vc presentViewController:a animated:YES completion:nil];
         return;
     }
@@ -485,16 +486,16 @@ static uint64_t ota_uint64Field(NSDictionary *dict, NSString *key) {
             UIViewController *strongVC = weakVC;
             if (strongVC == nil) return;
             NSString *name = [HorizonOTAUpdater displayNameForInstaller:installer];
-            UIAlertController *a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Не удалось открыть %@", name]
-                                                                       message:[NSString stringWithFormat:@"Убедитесь, что %@ установлен, или скопируйте ссылку репозитория вручную.", name]
+            UIAlertController *a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:HL(@"Couldn't Open %@", @"Не удалось открыть %@"), name]
+                                                                       message:[NSString stringWithFormat:HL(@"Make sure %@ is installed, or copy the repository URL manually.", @"Убедитесь, что %@ установлен, или скопируйте ссылку репозитория вручную."), name]
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-            [a addAction:[UIAlertAction actionWithTitle:@"Копировать URL"
+            [a addAction:[UIAlertAction actionWithTitle:HL(@"Copy URL", @"Копировать URL")
                                                   style:UIAlertActionStyleDefault
                                                 handler:^(UIAlertAction * _Nonnull action) {
                 (void)action;
                 UIPasteboard.generalPasteboard.string = srcURL;
             }]];
-            [a addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+            [a addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
             [strongVC presentViewController:a animated:YES completion:nil];
         });
     }];

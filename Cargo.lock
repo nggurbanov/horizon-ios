@@ -2214,7 +2214,6 @@ dependencies = [
  "horizon-client-input",
  "horizon-core",
  "horizon-game",
- "horizon-official",
  "horizon-protocol",
  "serde",
  "serde_json",

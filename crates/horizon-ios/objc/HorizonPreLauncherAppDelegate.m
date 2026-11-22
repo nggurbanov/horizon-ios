@@ -81,7 +81,7 @@ static BOOL horizon_resourcesManifestExists(void) {
     }
 
     HorizonLaunchCallback cb = sLaunchCallback;
-    // Allow CoreAnimation one frame to render the "Запуск Horizon…" spinner before starting Rust.
+    // Allow CoreAnimation one frame to render the "Launching Horizon…" spinner before starting Rust.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(40 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         cb();

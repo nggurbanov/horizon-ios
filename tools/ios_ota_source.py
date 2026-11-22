@@ -181,11 +181,13 @@ def build_source_manifest(
         "name": meta["name"],
         "bundleIdentifier": bundle_id,
         "developerName": owner,
-        "subtitle": "Minecraft: Java Edition 26.3 in Rust",
+        "subtitle": "Minecraft: Java Edition 26.3 in Rust (No JIT)",
         "localizedDescription": (
-            "Unofficial iOS build of Horizon (Minecraft: Java Edition 26.3 rewritten in Rust "
-            "with wgpu/Metal) featuring native Bedrock touch, GameController, and hardware "
-            "keyboard+mouse controls. Bring your own Minecraft: Java Edition assets."
+            "Unofficial, experimental, vibe-coded (AI-built) iOS port of Horizon "
+            "(Minecraft: Java Edition 26.3 rewritten in Rust with wgpu/Metal — no JVM, no JIT). "
+            "Expect bugs and rough edges; back up your worlds before playing. Includes a native "
+            "Pre-Launcher, Bedrock-style touch controls, GameController, and hardware "
+            "keyboard+mouse support. Bring your own Minecraft: Java Edition assets."
         ),
         "iconURL": icon_url,
         "tintColor": DEFAULT_TINT_COLOR,
@@ -207,10 +209,10 @@ def build_source_manifest(
     return {
         "name": "Horizon iOS",
         "identifier": f"{bundle_id}.repo",
-        "subtitle": "Minecraft: Java Edition 26.3 in Rust for iOS",
+        "subtitle": "Minecraft: Java Edition 26.3 in Rust for iOS (No JIT)",
         "description": (
-            "Official OTA repository for Horizon iOS builds. Compatible with Feather, "
-            "SideStore, and AltStore."
+            "OTA repository for Horizon iOS — an unofficial, experimental, vibe-coded (AI-built) "
+            "iOS port of Horizon. Compatible with Feather, SideStore, and AltStore."
         ),
         "iconURL": icon_url,
         "website": website_url,

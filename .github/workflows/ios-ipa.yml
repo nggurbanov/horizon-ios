@@ -77,7 +77,6 @@ jobs:
             sips -z "$2" "$2" "$src" --out "$app/$1" > /dev/null
           done
           cp LICENSE "$app/LICENSE-Horizon.txt"
-          cp LICENSES/GPL-3.0.txt "$app/LICENSE-GPL-3.0.txt"
           codesign --force --sign - --entitlements crates/horizon-ios/app/entitlements.plist "$app"
           zip -qry Horizon.ipa Payload
           PREV_SOURCE=""

@@ -1,5 +1,5 @@
-//! horizon-ios: the iOS app. Runs the official Horizon game (`horizon-official`) with a native
-//! UIKit landscape Pre-Launcher and Bedrock touch, GameController, and hardware mouse+keyboard
+//! horizon-ios: the iOS app. Runs the Horizon game (`horizon-game`) with a native UIKit
+//! landscape Pre-Launcher and Bedrock touch, GameController, and hardware mouse+keyboard
 //! overlay (`objc/`). See HORIZON-IOS.md.
 
 #[cfg(target_os = "ios")]
@@ -30,7 +30,6 @@ unsafe extern "C" {
 extern "C" fn launch_game_entry() {
     horizon_game::prepare_main_stack();
     std::hint::black_box(&GAME_IDENTITY);
-    horizon_official::register();
     horizon_game::main();
 }
 
@@ -47,6 +46,6 @@ fn main() {
 
 #[cfg(not(target_os = "ios"))]
 fn main() {
-    eprintln!("horizon-ios is the iOS app; on this system run horizon-official");
+    eprintln!("horizon-ios is the iOS app; on this system run horizon-client");
     std::process::exit(2);
 }

@@ -464,7 +464,7 @@ pub unsafe extern "C" fn horizon_ios_save_player_name(
     err_buf_len: usize,
 ) -> bool {
     if dir_path.is_null() || name.is_null() {
-        write_c_err(err_buf, err_buf_len, "Пустое значение");
+        write_c_err(err_buf, err_buf_len, "Empty value");
         return false;
     }
     // SAFETY: caller passes valid NUL-terminated UTF-8 strings.
@@ -506,7 +506,7 @@ pub unsafe extern "C" fn horizon_ios_upsert_server(
     err_buf_len: usize,
 ) -> bool {
     if servers_dat_path.is_null() || name.is_null() || ip.is_null() {
-        write_c_err(err_buf, err_buf_len, "Некорректные параметры");
+        write_c_err(err_buf, err_buf_len, "Invalid parameters");
         return false;
     }
     // SAFETY: caller passes valid NUL-terminated UTF-8 strings.
@@ -537,7 +537,7 @@ pub unsafe extern "C" fn horizon_ios_delete_server(
     err_buf_len: usize,
 ) -> bool {
     if servers_dat_path.is_null() || index < 0 {
-        write_c_err(err_buf, err_buf_len, "Некорректный индекс сервера");
+        write_c_err(err_buf, err_buf_len, "Invalid server index");
         return false;
     }
     // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
@@ -559,7 +559,7 @@ pub unsafe extern "C" fn horizon_ios_ping_server_json(
     timeout_ms: u32,
 ) -> *mut c_char {
     if address.is_null() {
-        return into_c_string(r#"{"online":false,"latency_ms":0,"players_online":-1,"players_max":-1,"version":"","motd":"","error":"Пустой адрес"}"#.into());
+        return into_c_string(r#"{"online":false,"latency_ms":0,"players_online":-1,"players_max":-1,"version":"","motd":"","error":"Empty address"}"#.into());
     }
     // SAFETY: caller passes a valid NUL-terminated UTF-8 string.
     let Ok(addr) = unsafe { CStr::from_ptr(address) }.to_str() else {
@@ -637,7 +637,7 @@ pub unsafe extern "C" fn horizon_ios_extract_resources_zip(
     err_buf_len: usize,
 ) -> i32 {
     if zip_path.is_null() || dest_dir.is_null() {
-        write_c_err(err_buf, err_buf_len, "Некорректный путь к архиву");
+        write_c_err(err_buf, err_buf_len, "Invalid archive path");
         return -1;
     }
     // SAFETY: caller passes valid NUL-terminated UTF-8 paths.

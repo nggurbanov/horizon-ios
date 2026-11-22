@@ -13,6 +13,7 @@
 #import "HorizonOverlayViewController.h"
 #import "HorizonGamepadManager.h"
 #import "HorizonIcons.h"
+#import "HorizonL10n.h"
 #import "HorizonMouseKeyboardManager.h"
 #import "HorizonSettings.h"
 #import "HorizonTouchSettingsViewController.h"
@@ -389,7 +390,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     self.invQuickMoveButton = [[HorizonBedrockButton alloc] initWithIcon:HorizonIconQuickMove circular:NO];
     self.invQuickMoveButton.caption = @"Shift";
     self.invDropButton = [[HorizonBedrockButton alloc] initWithIcon:HorizonIconDrop circular:NO];
-    self.invDropButton.caption = @"Drop";
+    self.invDropButton.caption = HL(@"Drop", @"Сброс");
     self.invSplitBar = [[HorizonGreenProgressBar alloc] initWithFrame:CGRectMake(0, 0, 44, 7)];
     self.invSplitBar.hidden = YES;
 

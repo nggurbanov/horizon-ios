@@ -15,6 +15,7 @@ static NSString * const kPrefGyroEnabled       = @"horizon.touch.gyroEnabled";
 static NSString * const kPrefGyroSensitivity   = @"horizon.touch.gyroSensitivity";
 static NSString * const kPrefSkipLauncher      = @"horizon.launcher.skipLauncher";
 static NSString * const kPrefLastQuickServer   = @"horizon.launcher.lastQuickServer";
+static NSString * const kPrefLauncherLanguage  = @"horizon.launcher.language";
 static NSString * const kPrefOTAInstaller      = @"horizon.ota.installer";
 static NSString * const kPrefOTAAutoCheck      = @"horizon.ota.autoCheckUpdates";
 static NSString * const kPrefOTASourceURL      = @"horizon.ota.sourceURL";
@@ -58,6 +59,7 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
             kPrefGyroEnabled: @NO,
             kPrefGyroSensitivity: @(1.0),
             kPrefSkipLauncher: @NO,
+            kPrefLauncherLanguage: @(HorizonLauncherLanguageAuto),
             kPrefOTAInstaller: @(HorizonOTAInstallerAuto),
             kPrefOTAAutoCheck: @YES,
             kPrefOTASourceURL: kDefaultOTASourceURL,
@@ -86,6 +88,12 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     _gyroSensitivity = clampf_cg([d doubleForKey:kPrefGyroSensitivity], 0.20, 3.00);
     _skipLauncher = [d boolForKey:kPrefSkipLauncher];
     _lastQuickServerAddress = [[d stringForKey:kPrefLastQuickServer] copy];
+
+    NSInteger lang = [d integerForKey:kPrefLauncherLanguage];
+    if (lang < HorizonLauncherLanguageAuto || lang > HorizonLauncherLanguageRussian) {
+        lang = HorizonLauncherLanguageAuto;
+    }
+    _launcherLanguage = (HorizonLauncherLanguage)lang;
 
     NSInteger inst = [d integerForKey:kPrefOTAInstaller];
     if (inst < HorizonOTAInstallerAuto || inst > HorizonOTAInstallerDirect) {
@@ -168,6 +176,14 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     } else {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:kPrefLastQuickServer];
     }
+}
+
+- (void)setLauncherLanguage:(HorizonLauncherLanguage)launcherLanguage {
+    if (launcherLanguage < HorizonLauncherLanguageAuto || launcherLanguage > HorizonLauncherLanguageRussian) {
+        launcherLanguage = HorizonLauncherLanguageAuto;
+    }
+    _launcherLanguage = launcherLanguage;
+    [NSUserDefaults.standardUserDefaults setInteger:launcherLanguage forKey:kPrefLauncherLanguage];
 }
 
 - (void)setOtaInstaller:(HorizonOTAInstaller)otaInstaller {

@@ -4,6 +4,7 @@
 #import "HorizonPreLauncherViewController.h"
 #import "HorizonAutoLoginStore.h"
 #import "HorizonIcons.h"
+#import "HorizonL10n.h"
 #import "HorizonLogViewerViewController.h"
 #import "HorizonOTAUpdater.h"
 #import "HorizonPreLauncherAppDelegate.h"
@@ -50,15 +51,15 @@ static UIColor *pl_hairline(void)    { return [UIColor colorWithWhite:1.0 alpha:
 
 static NSString *pl_formatBytes(uint64_t bytes) {
     if (bytes >= 1024ULL * 1024ULL * 1024ULL) {
-        return [NSString stringWithFormat:@"%.1f ГБ", bytes / (1024.0 * 1024.0 * 1024.0)];
+        return [NSString stringWithFormat:HL(@"%.1f GB", @"%.1f ГБ"), bytes / (1024.0 * 1024.0 * 1024.0)];
     }
     if (bytes >= 1024ULL * 1024ULL) {
-        return [NSString stringWithFormat:@"%.0f МБ", bytes / (1024.0 * 1024.0)];
+        return [NSString stringWithFormat:HL(@"%.0f MB", @"%.0f МБ"), bytes / (1024.0 * 1024.0)];
     }
     if (bytes >= 1024ULL) {
-        return [NSString stringWithFormat:@"%.0f КБ", bytes / 1024.0];
+        return [NSString stringWithFormat:HL(@"%.0f KB", @"%.0f КБ"), bytes / 1024.0];
     }
-    return [NSString stringWithFormat:@"%llu Б", (unsigned long long)bytes];
+    return [NSString stringWithFormat:HL(@"%llu B", @"%llu Б"), (unsigned long long)bytes];
 }
 
 static uint64_t pl_directorySize(NSString *path) {
@@ -300,6 +301,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 @property (nonatomic, strong) UISlider *gfxFovSlider;
 @property (nonatomic, strong) UILabel *gfxFovVal;
 @property (nonatomic, strong) UISegmentedControl *gfxLangSeg;
+@property (nonatomic, strong) UISegmentedControl *launcherLangSeg;
 @property (nonatomic, strong) UISwitch *skipLauncherSwitch;
 
 // Import busy overlay
@@ -637,11 +639,11 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     navStack.spacing = 4.0;
     [rail addSubview:navStack];
 
-    HorizonRailTabButton *b0 = [[HorizonRailTabButton alloc] initWithTitle:@"Главная" icon:HorizonIconHome];
-    HorizonRailTabButton *b1 = [[HorizonRailTabButton alloc] initWithTitle:@"Серверы" icon:HorizonIconServers];
-    HorizonRailTabButton *b2 = [[HorizonRailTabButton alloc] initWithTitle:@"Управление" icon:HorizonIconGamepad];
-    HorizonRailTabButton *b3 = [[HorizonRailTabButton alloc] initWithTitle:@"Графика" icon:HorizonIconSliders];
-    HorizonRailTabButton *b4 = [[HorizonRailTabButton alloc] initWithTitle:@"Файлы" icon:HorizonIconFolder];
+    HorizonRailTabButton *b0 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Home", @"Главная") icon:HorizonIconHome];
+    HorizonRailTabButton *b1 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Servers", @"Серверы") icon:HorizonIconServers];
+    HorizonRailTabButton *b2 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Controls", @"Управление") icon:HorizonIconGamepad];
+    HorizonRailTabButton *b3 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Graphics", @"Графика") icon:HorizonIconSliders];
+    HorizonRailTabButton *b4 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Files", @"Файлы") icon:HorizonIconFolder];
     self.tabButtons = @[b0, b1, b2, b3, b4];
     for (NSUInteger i = 0; i < self.tabButtons.count; i++) {
         HorizonRailTabButton *btn = self.tabButtons[i];
@@ -757,7 +759,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     self.playButton.backgroundColor = pl_emerald();
     self.playButton.layer.cornerRadius = 10.0;
     [self.playButton setImage:[HorizonIcons iconForKind:HorizonIconPlay pointSize:15.0] forState:UIControlStateNormal];
-    [self.playButton setTitle:@"Играть" forState:UIControlStateNormal];
+    [self.playButton setTitle:HL(@"Play", @"Играть") forState:UIControlStateNormal];
     [self.playButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     self.playButton.tintColor = UIColor.whiteColor;
     self.playButton.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightBold];
@@ -774,7 +776,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     self.launchingLabel = [[UILabel alloc] init];
     self.launchingLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.launchingLabel.text = @"Запуск Horizon…";
+    self.launchingLabel.text = HL(@"Launching Horizon…", @"Запуск Horizon…");
     self.launchingLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold];
     self.launchingLabel.textColor = pl_textPrimary();
     self.launchingLabel.hidden = YES;
@@ -1016,10 +1018,15 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     return seg;
 }
 
-#pragma mark - Tab 1: Главная (Home)
+#pragma mark - Tab 1: Home
 
 - (void)buildHomeTab {
-    [self.homeStack addArrangedSubview:[self pageHeaderLabel:@"Главная"]];
+    for (UIView *sub in [self.homeStack.arrangedSubviews copy]) {
+        [self.homeStack removeArrangedSubview:sub];
+        [sub removeFromSuperview];
+    }
+
+    [self.homeStack addArrangedSubview:[self pageHeaderLabel:HL(@"Home", @"Главная")]];
 
     // OTA Update Banner (hidden when already up to date — zero clutter normally)
     UIView *updCard = [[UIView alloc] init];
@@ -1056,7 +1063,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     self.homeUpdateButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.homeUpdateButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.homeUpdateButton setTitle:@"Обновить" forState:UIControlStateNormal];
+    [self.homeUpdateButton setTitle:HL(@"Update", @"Обновить") forState:UIControlStateNormal];
     [self.homeUpdateButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     self.homeUpdateButton.backgroundColor = pl_emerald();
     self.homeUpdateButton.layer.cornerRadius = 8.0;
@@ -1111,7 +1118,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UILabel *nickCaption = [[UILabel alloc] init];
     nickCaption.translatesAutoresizingMaskIntoConstraints = NO;
-    nickCaption.text = @"НИКНЕЙМ ИГРОКА (ОФЛАЙН)";
+    nickCaption.text = HL(@"PLAYER NAME (OFFLINE)", @"НИКНЕЙМ ИГРОКА (ОФЛАЙН)");
     nickCaption.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightBold];
     nickCaption.textColor = pl_textMuted();
     [profileCard addSubview:nickCaption];
@@ -1168,7 +1175,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self.homeStack addArrangedSubview:profileCard];
 
     // Quick 1-Tap Launch Section
-    [self.homeStack addArrangedSubview:[self sectionCaption:@"БЫСТРЫЙ ВХОД В 1 ТАП"]];
+    [self.homeStack addArrangedSubview:[self sectionCaption:HL(@"1-TAP QUICK JOIN", @"БЫСТРЫЙ ВХОД В 1 ТАП")]];
     UIStackView *quickStack = [[UIStackView alloc] init];
     quickStack.axis = UILayoutConstraintAxisVertical;
     quickStack.spacing = 8.0;
@@ -1176,14 +1183,14 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self.homeStack addArrangedSubview:quickStack];
 
     // 4 Pre-flight Summary Tiles (2x2 grid)
-    [self.homeStack addArrangedSubview:[self sectionCaption:@"ПАРАМЕТРЫ ПЕРЕД ЗАПУСКОМ"]];
+    [self.homeStack addArrangedSubview:[self sectionCaption:HL(@"PRE-LAUNCH SETTINGS", @"ПАРАМЕТРЫ ПЕРЕД ЗАПУСКОМ")]];
 
     UILabel *v1 = nil, *v2 = nil, *v3 = nil, *v4 = nil;
     UIImageView *i4 = nil;
-    UIControl *t1 = [self summaryTileTitle:@"Дальность" icon:HorizonIconSliders targetTab:HorizonLauncherTabGraphics valueLabel:&v1 iconView:NULL];
-    UIControl *t2 = [self summaryTileTitle:@"Лимит FPS" icon:HorizonIconRefresh targetTab:HorizonLauncherTabGraphics valueLabel:&v2 iconView:NULL];
-    UIControl *t3 = [self summaryTileTitle:@"Схема" icon:HorizonIconGamepad targetTab:HorizonLauncherTabControls valueLabel:&v3 iconView:NULL];
-    UIControl *t4 = [self summaryTileTitle:@"Ресурсы" icon:HorizonIconCheck targetTab:HorizonLauncherTabFiles valueLabel:&v4 iconView:&i4];
+    UIControl *t1 = [self summaryTileTitle:HL(@"Render Distance", @"Дальность") icon:HorizonIconSliders targetTab:HorizonLauncherTabGraphics valueLabel:&v1 iconView:NULL];
+    UIControl *t2 = [self summaryTileTitle:HL(@"Max FPS", @"Лимит FPS") icon:HorizonIconRefresh targetTab:HorizonLauncherTabGraphics valueLabel:&v2 iconView:NULL];
+    UIControl *t3 = [self summaryTileTitle:HL(@"Controls", @"Схема") icon:HorizonIconGamepad targetTab:HorizonLauncherTabControls valueLabel:&v3 iconView:NULL];
+    UIControl *t4 = [self summaryTileTitle:HL(@"Resources", @"Ресурсы") icon:HorizonIconCheck targetTab:HorizonLauncherTabFiles valueLabel:&v4 iconView:&i4];
     self.tileRenderVal = v1;
     self.tileFpsVal = v2;
     self.tileSchemeVal = v3;
@@ -1294,14 +1301,14 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         UIView *emptySrv = [self insetCard];
         UILabel *lbl = [[UILabel alloc] init];
         lbl.translatesAutoresizingMaskIntoConstraints = NO;
-        lbl.text = @"Добавьте сервер для входа в 1 тап и автологина";
+        lbl.text = HL(@"Add a server for 1-tap join and Auto-Login", @"Добавьте сервер для входа в 1 тап и автологина");
         lbl.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
         lbl.textColor = pl_textSec();
         [emptySrv addSubview:lbl];
 
         UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         addBtn.translatesAutoresizingMaskIntoConstraints = NO;
-        [addBtn setTitle:@"+ Сервер" forState:UIControlStateNormal];
+        [addBtn setTitle:HL(@"+ Server", @"+ Сервер") forState:UIControlStateNormal];
         [addBtn setTitleColor:pl_emerald() forState:UIControlStateNormal];
         addBtn.backgroundColor = pl_emeraldSoft();
         addBtn.layer.cornerRadius = 8.0;
@@ -1327,7 +1334,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     }
 }
 
-#pragma mark - Tab 2: Серверы & Локальные миры
+#pragma mark - Tab 2: Servers & Local Worlds
 
 - (void)rebuildServersTab {
     for (UIView *sub in [self.serversStack.arrangedSubviews copy]) {
@@ -1337,7 +1344,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     // Header bar with Refresh + Add Server
     UIView *hdr = [[UIView alloc] init];
-    UILabel *title = [self pageHeaderLabel:@"Серверы"];
+    UILabel *title = [self pageHeaderLabel:HL(@"Servers", @"Серверы")];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [hdr addSubview:title];
 
@@ -1355,7 +1362,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     addBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [addBtn setImage:[HorizonIcons iconForKind:HorizonIconPlus pointSize:14.0] forState:UIControlStateNormal];
-    [addBtn setTitle:@"Добавить сервер" forState:UIControlStateNormal];
+    [addBtn setTitle:HL(@"Add Server", @"Добавить сервер") forState:UIControlStateNormal];
     [addBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     addBtn.tintColor = UIColor.whiteColor;
     addBtn.backgroundColor = pl_emerald();
@@ -1383,7 +1390,8 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         UIView *empty = [self insetCard];
         UILabel *l = [[UILabel alloc] init];
         l.translatesAutoresizingMaskIntoConstraints = NO;
-        l.text = @"Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес в servers.dat и настроить автологин.";
+        l.text = HL(@"No servers yet. Tap \"Add Server\" to save an address to servers.dat and configure Auto-Login.",
+                    @"Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес в servers.dat и настроить автологин.");
         l.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
         l.textColor = pl_textSec();
         l.numberOfLines = 0;
@@ -1402,12 +1410,13 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     }
 
     // Local Worlds section
-    [self.serversStack addArrangedSubview:[self sectionCaption:@"ЛОКАЛЬНЫЕ МИРЫ"]];
+    [self.serversStack addArrangedSubview:[self sectionCaption:HL(@"LOCAL WORLDS", @"ЛОКАЛЬНЫЕ МИРЫ")]];
     if (self.localWorlds.count == 0) {
         UIView *emptyW = [self insetCard];
         UILabel *lw = [[UILabel alloc] init];
         lw.translatesAutoresizingMaskIntoConstraints = NO;
-        lw.text = @"Локальные миры появятся здесь после создания мира в Documents/saves/.";
+        lw.text = HL(@"Local worlds will appear here after you create a world in Documents/saves/.",
+                     @"Локальные миры появятся здесь после создания мира в Documents/saves/.");
         lw.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightRegular];
         lw.textColor = pl_textMuted();
         lw.numberOfLines = 0;
@@ -1427,7 +1436,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 }
 
 - (UIView *)buildServerCardForDict:(NSDictionary *)srv index:(NSInteger)idx compactQuick:(BOOL)compactQuick {
-    NSString *name = srv[@"name"] ?: @"Сервер";
+    NSString *name = srv[@"name"] ?: HL(@"Server", @"Сервер");
     NSString *ip = srv[@"ip"] ?: @"";
     HorizonPingState *ping = self.pings[ip];
     HorizonAutoLoginConfig *autoCfg = [HorizonAutoLoginStore.shared configForAddress:ip];
@@ -1467,7 +1476,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UILabel *autoLbl = [[UILabel alloc] init];
     autoLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    autoLbl.text = @"Автологин";
+    autoLbl.text = HL(@"Auto-Login", @"Автологин");
     autoLbl.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
     autoLbl.textColor = pl_rgb(122, 238, 164, 1.0);
     [autoPill addSubview:autoLbl];
@@ -1480,19 +1489,20 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [card addSubview:nameRow];
 
     // Subtitle: address + ping status
-    NSString *pingDesc = @"Опрос…";
+    NSString *pingDesc = HL(@"Pinging…", @"Опрос…");
     if (ping != nil && !ping.loading) {
         if (ping.online) {
             if (ping.playersOnline >= 0 && ping.playersMax >= 0) {
-                pingDesc = [NSString stringWithFormat:@"%llu мс · %lld/%lld",
+                pingDesc = [NSString stringWithFormat:HL(@"%llu ms · %lld/%lld", @"%llu мс · %lld/%lld"),
                             (unsigned long long)ping.latencyMs,
                             (long long)ping.playersOnline,
                             (long long)ping.playersMax];
             } else {
-                pingDesc = [NSString stringWithFormat:@"%llu мс · онлайн", (unsigned long long)ping.latencyMs];
+                pingDesc = [NSString stringWithFormat:HL(@"%llu ms · online", @"%llu мс · онлайн"),
+                            (unsigned long long)ping.latencyMs];
             }
         } else {
-            pingDesc = @"недоступен";
+            pingDesc = HL(@"offline", @"недоступен");
         }
     }
     UILabel *subLbl = [[UILabel alloc] init];
@@ -1506,7 +1516,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     // Join 1-tap button
     UIButton *joinBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     joinBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [joinBtn setTitle:@"Войти" forState:UIControlStateNormal];
+    [joinBtn setTitle:HL(@"Join", @"Войти") forState:UIControlStateNormal];
     [joinBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     joinBtn.backgroundColor = pl_emerald();
     joinBtn.layer.cornerRadius = 8.0;
@@ -1578,20 +1588,25 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     uint64_t sz = [w[@"size_bytes"] unsignedLongLongValue];
     int64_t lastMs = [w[@"last_played_ms"] longLongValue];
 
-    NSString *modeName = @"Выживание";
-    if (gameType == 1) modeName = @"Творческий";
-    else if (gameType == 2) modeName = @"Приключение";
-    else if (gameType == 3) modeName = @"Наблюдатель";
+    NSString *modeName = HL(@"Survival", @"Выживание");
+    if (gameType == 1) modeName = HL(@"Creative", @"Творческий");
+    else if (gameType == 2) modeName = HL(@"Adventure", @"Приключение");
+    else if (gameType == 3) modeName = HL(@"Spectator", @"Наблюдатель");
 
     NSString *datePart = @"";
     if (lastMs > 0) {
-        static NSDateFormatter *fmt = nil;
+        static NSDateFormatter *fmtEn = nil;
+        static NSDateFormatter *fmtRu = nil;
         static dispatch_once_t once;
         dispatch_once(&once, ^{
-            fmt = [[NSDateFormatter alloc] init];
-            fmt.locale = [NSLocale localeWithLocaleIdentifier:@"ru_RU"];
-            fmt.dateFormat = @"d MMM HH:mm";
+            fmtEn = [[NSDateFormatter alloc] init];
+            fmtEn.locale = [NSLocale localeWithLocaleIdentifier:@"en_US"];
+            fmtEn.dateFormat = @"MMM d, HH:mm";
+            fmtRu = [[NSDateFormatter alloc] init];
+            fmtRu.locale = [NSLocale localeWithLocaleIdentifier:@"ru_RU"];
+            fmtRu.dateFormat = @"d MMM HH:mm";
         });
+        NSDateFormatter *fmt = HorizonIsRussian() ? fmtRu : fmtEn;
         datePart = [NSString stringWithFormat:@" · %@", [fmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:lastMs / 1000.0]]];
     }
 
@@ -1619,7 +1634,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UIButton *openBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     openBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [openBtn setTitle:@"Открыть" forState:UIControlStateNormal];
+    [openBtn setTitle:HL(@"Open", @"Открыть") forState:UIControlStateNormal];
     [openBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
     openBtn.backgroundColor = pl_elevatedBg();
     openBtn.layer.cornerRadius = 8.0;
@@ -1654,12 +1669,17 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     return card;
 }
 
-#pragma mark - Tab 3: Управление (Controls)
+#pragma mark - Tab 3: Controls
 
 - (void)buildControlsTab {
+    for (UIView *sub in [self.controlsStack.arrangedSubviews copy]) {
+        [self.controlsStack removeArrangedSubview:sub];
+        [sub removeFromSuperview];
+    }
+
     // Header + Live Input Status Pill
     UIView *hdr = [[UIView alloc] init];
-    UILabel *title = [self pageHeaderLabel:@"Управление"];
+    UILabel *title = [self pageHeaderLabel:HL(@"Controls", @"Управление")];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [hdr addSubview:title];
 
@@ -1700,30 +1720,33 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     ]];
     [self.controlsStack addArrangedSubview:hdr];
 
-    [self.controlsStack addArrangedSubview:[self sectionCaption:@"СХЕМА СЕНСОРНОГО УПРАВЛЕНИЯ"]];
-    self.ctrlSchemeSeg = [self styledSegmentedControlWithItems:@[@"Джойстик + прицел", @"Джойстик + тап", @"Крестовина"]
-                                                        action:@selector(onControlsChanged)];
+    [self.controlsStack addArrangedSubview:[self sectionCaption:HL(@"TOUCH CONTROL SCHEME", @"СХЕМА СЕНСОРНОГО УПРАВЛЕНИЯ")]];
+    self.ctrlSchemeSeg = [self styledSegmentedControlWithItems:@[
+        HL(@"Joystick + Crosshair", @"Джойстик + прицел"),
+        HL(@"Joystick + Tap", @"Джойстик + тап"),
+        HL(@"Classic D-Pad", @"Крестовина"),
+    ] action:@selector(onControlsChanged)];
     [self.controlsStack addArrangedSubview:self.ctrlSchemeSeg];
 
-    self.ctrlFloatingSw = [self makeToggleRow:@"Плавающий джойстик" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
-    self.ctrlAutoJumpSw = [self makeToggleRow:@"Автопрыжок (в сенсорном режиме)" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlFloatingSw = [self makeToggleRow:HL(@"Floating Joystick", @"Плавающий джойстик") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlAutoJumpSw = [self makeToggleRow:HL(@"Auto-Jump (Touch Mode)", @"Автопрыжок (в сенсорном режиме)") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
 
     UILabel *lbl = nil;
-    self.ctrlScaleSlider = [self makeSliderRow:@"Размер кнопок" min:0.70 max:1.40 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlScaleSlider = [self makeSliderRow:HL(@"Button Size", @"Размер кнопок") min:0.70 max:1.40 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
     self.ctrlScaleVal = lbl;
 
-    self.ctrlOpacitySlider = [self makeSliderRow:@"Прозрачность кнопок" min:0.25 max:1.00 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlOpacitySlider = [self makeSliderRow:HL(@"Button Opacity", @"Прозрачность кнопок") min:0.25 max:1.00 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
     self.ctrlOpacityVal = lbl;
 
-    self.ctrlSensSlider = [self makeSliderRow:@"Чувствительность камеры" min:0.30 max:2.50 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlSensSlider = [self makeSliderRow:HL(@"Camera Sensitivity", @"Чувствительность камеры") min:0.30 max:2.50 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
     self.ctrlSensVal = lbl;
 
-    self.ctrlLeftHandSw = [self makeToggleRow:@"Раскладка для левши" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
-    self.ctrlSwapJumpSw = [self makeToggleRow:@"Поменять прыжок и приседание" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
-    self.ctrlHapticsSw = [self makeToggleRow:@"Тактильный отклик (CoreHaptics)" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
-    self.ctrlGyroSw = [self makeToggleRow:@"Прицеливание гироскопом" subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlLeftHandSw = [self makeToggleRow:HL(@"Left-Handed Layout", @"Раскладка для левши") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlSwapJumpSw = [self makeToggleRow:HL(@"Swap Jump & Sneak", @"Поменять прыжок и приседание") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlHapticsSw = [self makeToggleRow:HL(@"Haptic Feedback (CoreHaptics)", @"Тактильный отклик (CoreHaptics)") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlGyroSw = [self makeToggleRow:HL(@"Gyroscope Aiming", @"Прицеливание гироскопом") subtitle:nil action:@selector(onControlsChanged) inStack:self.controlsStack];
 
-    self.ctrlGyroSlider = [self makeSliderRow:@"Чувствительность гироскопа" min:0.20 max:3.00 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
+    self.ctrlGyroSlider = [self makeSliderRow:HL(@"Gyro Sensitivity", @"Чувствительность гироскопа") min:0.20 max:3.00 valueLabel:&lbl action:@selector(onControlsChanged) inStack:self.controlsStack];
     self.ctrlGyroVal = lbl;
 
     UIButton *resetBtn = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1731,7 +1754,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     resetBtn.layer.cornerRadius = 10.0;
     resetBtn.layer.borderWidth = 1.0;
     resetBtn.layer.borderColor = pl_rgb(229, 83, 75, 0.30).CGColor;
-    [resetBtn setTitle:@"Сбросить настройки управления" forState:UIControlStateNormal];
+    [resetBtn setTitle:HL(@"Reset Control Settings", @"Сбросить настройки управления") forState:UIControlStateNormal];
     [resetBtn setTitleColor:pl_rgb(245, 114, 107, 1.0) forState:UIControlStateNormal];
     resetBtn.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
     resetBtn.contentEdgeInsets = UIEdgeInsetsMake(10.0, 14.0, 10.0, 14.0);
@@ -1785,21 +1808,26 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self updateSummaryTiles];
 }
 
-#pragma mark - Tab 4: Графика (Graphics & options.txt)
+#pragma mark - Tab 4: Graphics & options.txt
 
 - (void)buildGraphicsTab {
-    [self.graphicsStack addArrangedSubview:[self pageHeaderLabel:@"Графика"]];
+    for (UIView *sub in [self.graphicsStack.arrangedSubviews copy]) {
+        [self.graphicsStack removeArrangedSubview:sub];
+        [sub removeFromSuperview];
+    }
 
-    [self.graphicsStack addArrangedSubview:[self sectionCaption:@"БЫСТРЫЕ ПРЕСЕТЫ"]];
+    [self.graphicsStack addArrangedSubview:[self pageHeaderLabel:HL(@"Graphics", @"Графика")]];
+
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"QUICK PRESETS", @"БЫСТРЫЕ ПРЕСЕТЫ")]];
     UIStackView *presetRow = [[UIStackView alloc] init];
     presetRow.axis = UILayoutConstraintAxisHorizontal;
     presetRow.spacing = 10.0;
     presetRow.distribution = UIStackViewDistributionFillEqually;
 
     NSArray<NSArray<NSString *> *> *presets = @[
-        @[@"Батарея", @"6 чанков · 30 FPS"],
-        @[@"Баланс", @"8 чанков · 60 FPS"],
-        @[@"Максимум", @"12 чанков · 120 FPS"],
+        @[HL(@"Battery", @"Батарея"), HL(@"6 chunks · 30 FPS", @"6 чанков · 30 FPS")],
+        @[HL(@"Balanced", @"Баланс"), HL(@"8 chunks · 60 FPS", @"8 чанков · 60 FPS")],
+        @[HL(@"Max", @"Максимум"), HL(@"12 chunks · 120 FPS", @"12 чанков · 120 FPS")],
     ];
     NSMutableArray<UIButton *> *pBtns = [NSMutableArray array];
     for (NSUInteger i = 0; i < presets.count; i++) {
@@ -1831,30 +1859,36 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     [self.graphicsStack addArrangedSubview:[self sectionCaption:@"OPTIONS.TXT"]];
     UILabel *lbl = nil;
-    self.gfxRenderSlider = [self makeSliderRow:@"Дальность прорисовки" min:2.0 max:24.0 valueLabel:&lbl action:@selector(onGraphicsChanged) inStack:self.graphicsStack];
+    self.gfxRenderSlider = [self makeSliderRow:HL(@"Render Distance", @"Дальность прорисовки") min:2.0 max:24.0 valueLabel:&lbl action:@selector(onGraphicsChanged) inStack:self.graphicsStack];
     self.gfxRenderVal = lbl;
 
-    [self.graphicsStack addArrangedSubview:[self sectionCaption:@"ЛИМИТ FPS"]];
-    self.gfxFpsSeg = [self styledSegmentedControlWithItems:@[@"30", @"60", @"90", @"120", @"Без лимита"]
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"MAX FPS", @"ЛИМИТ FPS")]];
+    self.gfxFpsSeg = [self styledSegmentedControlWithItems:@[@"30", @"60", @"90", @"120", HL(@"Unlimited", @"Без лимита")]
                                                     action:@selector(onGraphicsChanged)];
     [self.graphicsStack addArrangedSubview:self.gfxFpsSeg];
 
-    [self.graphicsStack addArrangedSubview:[self sectionCaption:@"МАСШТАБ ИНТЕРФЕЙСА"]];
-    self.gfxGuiSeg = [self styledSegmentedControlWithItems:@[@"Авто", @"1×", @"2×", @"3×", @"4×"]
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"GUI SCALE", @"МАСШТАБ ИНТЕРФЕЙСА")]];
+    self.gfxGuiSeg = [self styledSegmentedControlWithItems:@[HL(@"Auto", @"Авто"), @"1×", @"2×", @"3×", @"4×"]
                                                     action:@selector(onGraphicsChanged)];
     [self.graphicsStack addArrangedSubview:self.gfxGuiSeg];
 
-    self.gfxFovSlider = [self makeSliderRow:@"Поле зрения (FOV)" min:60.0 max:110.0 valueLabel:&lbl action:@selector(onGraphicsChanged) inStack:self.graphicsStack];
+    self.gfxFovSlider = [self makeSliderRow:HL(@"Field of View (FOV)", @"Поле зрения (FOV)") min:60.0 max:110.0 valueLabel:&lbl action:@selector(onGraphicsChanged) inStack:self.graphicsStack];
     self.gfxFovVal = lbl;
 
-    [self.graphicsStack addArrangedSubview:[self sectionCaption:@"ЯЗЫК ИГРЫ"]];
-    self.gfxLangSeg = [self styledSegmentedControlWithItems:@[@"Русский (ru_ru)", @"English (en_us)"]
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"GAME LANGUAGE", @"ЯЗЫК ИГРЫ")]];
+    self.gfxLangSeg = [self styledSegmentedControlWithItems:@[@"English (en_us)", @"Русский (ru_ru)"]
                                                      action:@selector(onGraphicsChanged)];
     [self.graphicsStack addArrangedSubview:self.gfxLangSeg];
 
-    [self.graphicsStack addArrangedSubview:[self sectionCaption:@"ЗАПУСК"]];
-    self.skipLauncherSwitch = [self makeToggleRow:@"Пропускать лаунчер при старте"
-                                         subtitle:@"Вернуть лаунчер можно в настройках управления внутри игры (Show Launcher on Next Start)."
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"LAUNCHER LANGUAGE", @"ЯЗЫК ЛАУНЧЕРА")]];
+    self.launcherLangSeg = [self styledSegmentedControlWithItems:@[HL(@"Auto", @"Авто"), @"English", @"Русский"]
+                                                          action:@selector(onLauncherLanguageChanged)];
+    [self.graphicsStack addArrangedSubview:self.launcherLangSeg];
+
+    [self.graphicsStack addArrangedSubview:[self sectionCaption:HL(@"STARTUP", @"ЗАПУСК")]];
+    self.skipLauncherSwitch = [self makeToggleRow:HL(@"Skip Launcher on Startup", @"Пропускать лаунчер при старте")
+                                         subtitle:HL(@"Re-enable it anytime in in-game Touch Settings (Show Launcher on Next Start).",
+                                                     @"Вернуть лаунчер можно в настройках сенсорного управления внутри игры («Показывать лаунчер при следующем запуске»).")
                                            action:@selector(onSkipLauncherChanged)
                                           inStack:self.graphicsStack];
 }
@@ -1862,7 +1896,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 - (void)syncGraphicsUIFromOptions {
     int32_t clampedRd = MAX(2, MIN(24, self.optRenderDistance));
     self.gfxRenderSlider.value = (float)clampedRd;
-    self.gfxRenderVal.text = [NSString stringWithFormat:@"%d чанков", self.optRenderDistance];
+    self.gfxRenderVal.text = [NSString stringWithFormat:HL(@"%d chunks", @"%d чанков"), self.optRenderDistance];
 
     NSInteger fpsIdx = 3; // 120
     if (self.optMaxFps <= 30) fpsIdx = 0;
@@ -1879,7 +1913,8 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     self.gfxFovVal.text = [NSString stringWithFormat:@"%d°", self.optFov];
 
     BOOL isRu = [self.optLang.lowercaseString hasPrefix:@"ru"];
-    self.gfxLangSeg.selectedSegmentIndex = isRu ? 0 : 1;
+    self.gfxLangSeg.selectedSegmentIndex = isRu ? 1 : 0;
+    self.launcherLangSeg.selectedSegmentIndex = MAX(0, MIN(2, (NSInteger)HorizonSettings.shared.launcherLanguage));
     self.skipLauncherSwitch.on = HorizonSettings.shared.skipLauncher;
 
     [self refreshGraphicsPresetHighlight];
@@ -1922,9 +1957,9 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     self.optMaxFps = (fi >= 0 && fi < 5) ? kFpsTable[fi] : 120;
     self.optGuiScale = (int32_t)MAX(0, self.gfxGuiSeg.selectedSegmentIndex);
     self.optFov = (int32_t)llroundf(self.gfxFovSlider.value);
-    self.optLang = (self.gfxLangSeg.selectedSegmentIndex == 0) ? @"ru_ru" : @"en_us";
+    self.optLang = (self.gfxLangSeg.selectedSegmentIndex == 1) ? @"ru_ru" : @"en_us";
 
-    self.gfxRenderVal.text = [NSString stringWithFormat:@"%d чанков", self.optRenderDistance];
+    self.gfxRenderVal.text = [NSString stringWithFormat:HL(@"%d chunks", @"%d чанков"), self.optRenderDistance];
     self.gfxFovVal.text = [NSString stringWithFormat:@"%d°", self.optFov];
 
     [self saveOptionsToDisk];
@@ -1932,11 +1967,16 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self updateSummaryTiles];
 }
 
+- (void)onLauncherLanguageChanged {
+    HorizonSettings.shared.launcherLanguage = (HorizonLauncherLanguage)self.launcherLangSeg.selectedSegmentIndex;
+    [self rebuildForLanguageChange];
+}
+
 - (void)onSkipLauncherChanged {
     HorizonSettings.shared.skipLauncher = self.skipLauncherSwitch.isOn;
 }
 
-#pragma mark - Tab 5: Файлы (Resources, Packs, Logs, Diagnostics)
+#pragma mark - Tab 5: Files (Resources, Packs, Logs, Diagnostics)
 
 - (NSUInteger)countItemsInDirectory:(NSString *)dir {
     NSArray<NSString *> *items = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil];
@@ -1954,12 +1994,12 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     NSString *curLog = [self.documentsDir stringByAppendingPathComponent:@"horizon-log.txt"];
     if ([fm fileExistsAtPath:curLog]) {
         [urls addObject:[NSURL fileURLWithPath:curLog]];
-        [outTitles addObject:@"Текущий лог"];
+        [outTitles addObject:HL(@"Current Log", @"Текущий лог")];
     }
     NSString *prevLog = [self.documentsDir stringByAppendingPathComponent:@"horizon-log.previous.txt"];
     if ([fm fileExistsAtPath:prevLog]) {
         [urls addObject:[NSURL fileURLWithPath:prevLog]];
-        [outTitles addObject:@"Предыдущий"];
+        [outTitles addObject:HL(@"Previous Log", @"Предыдущий")];
     }
     // Latest crash report in Documents/horizon/crash-reports/
     NSString *crashDir = [[self.documentsDir stringByAppendingPathComponent:@"horizon"]
@@ -1979,7 +2019,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     }
     if (newestCrash != nil) {
         [urls addObject:newestCrash];
-        [outTitles addObject:@"Краш-репорт"];
+        [outTitles addObject:HL(@"Crash Report", @"Краш-репорт")];
     }
     return urls;
 }
@@ -1990,10 +2030,10 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         [sub removeFromSuperview];
     }
 
-    [self.filesStack addArrangedSubview:[self pageHeaderLabel:@"Файлы и диагностика"]];
+    [self.filesStack addArrangedSubview:[self pageHeaderLabel:HL(@"Files & Diagnostics", @"Файлы и диагностика")]];
 
     // 1. Game Resources card
-    [self.filesStack addArrangedSubview:[self sectionCaption:@"РЕСУРСЫ ИГРЫ (DOCUMENTS/RESOURCES)"]];
+    [self.filesStack addArrangedSubview:[self sectionCaption:HL(@"GAME RESOURCES (DOCUMENTS/RESOURCES)", @"РЕСУРСЫ ИГРЫ (DOCUMENTS/RESOURCES)")]];
     UIView *resCard = [self insetCard];
     UIImageView *resIcon = [[UIImageView alloc] initWithImage:[HorizonIcons iconForKind:(self.resourcesReady ? HorizonIconCheck : HorizonIconWarning) pointSize:18.0]];
     resIcon.translatesAutoresizingMaskIntoConstraints = NO;
@@ -2002,7 +2042,9 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UILabel *resTitle = [[UILabel alloc] init];
     resTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    resTitle.text = self.resourcesReady ? @"Ресурсы Horizon 26.3 готовы" : @"Ресурсы не найдены";
+    resTitle.text = self.resourcesReady
+        ? HL(@"Horizon 26.3 resources ready", @"Ресурсы Horizon 26.3 готовы")
+        : HL(@"Resources not found", @"Ресурсы не найдены");
     resTitle.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold];
     resTitle.textColor = self.resourcesReady ? pl_textPrimary() : pl_amber();
     [resCard addSubview:resTitle];
@@ -2010,10 +2052,11 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     UILabel *resSub = [[UILabel alloc] init];
     resSub.translatesAutoresizingMaskIntoConstraints = NO;
     if (self.resourcesReady) {
-        NSString *szStr = self.resourcesSizeCalculated ? pl_formatBytes(self.resourcesBytes) : @"подсчёт размера…";
-        resSub.text = [NSString stringWithFormat:@"horizon-resources.json найден · %@", szStr];
+        NSString *szStr = self.resourcesSizeCalculated ? pl_formatBytes(self.resourcesBytes) : HL(@"calculating size…", @"подсчёт размера…");
+        resSub.text = [NSString stringWithFormat:HL(@"horizon-resources.json found · %@", @"horizon-resources.json найден · %@"), szStr];
     } else {
-        resSub.text = @"Импортируйте папку resources или .zip-архив с horizon-resources.json";
+        resSub.text = HL(@"Import the resources folder or a .zip archive containing horizon-resources.json",
+                         @"Импортируйте папку resources или .zip-архив с horizon-resources.json");
     }
     resSub.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
     resSub.textColor = pl_textSec();
@@ -2022,7 +2065,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UIButton *importBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     importBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [importBtn setTitle:@"Импорт…" forState:UIControlStateNormal];
+    [importBtn setTitle:HL(@"Import…", @"Импорт…") forState:UIControlStateNormal];
     [importBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     importBtn.backgroundColor = self.resourcesReady ? pl_elevatedBg() : pl_emerald();
     importBtn.layer.cornerRadius = 8.0;
@@ -2055,18 +2098,24 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self appendOTASectionToFilesStack];
 
     // 2. Resource Packs & Shader Packs
-    [self.filesStack addArrangedSubview:[self sectionCaption:@"ПАКЕТЫ РЕСУРСОВ И ШЕЙДЕРЫ"]];
+    [self.filesStack addArrangedSubview:[self sectionCaption:HL(@"RESOURCE PACKS & SHADERS", @"ПАКЕТЫ РЕСУРСОВ И ШЕЙДЕРЫ")]];
     NSUInteger rpCount = [self countItemsInDirectory:self.resourcePacksDir];
     NSUInteger spCount = [self countItemsInDirectory:self.shaderPacksDir];
-    [self.filesStack addArrangedSubview:[self packRowTitle:@"Ресурспаки"
-                                                  subtitle:[NSString stringWithFormat:@"%lu шт. в Documents/resourcepacks/", (unsigned long)rpCount]
+    NSString *rpSub = HorizonIsRussian()
+        ? [NSString stringWithFormat:@"%lu шт. в Documents/resourcepacks/", (unsigned long)rpCount]
+        : [NSString stringWithFormat:(rpCount == 1 ? @"%lu item in Documents/resourcepacks/" : @"%lu items in Documents/resourcepacks/"), (unsigned long)rpCount];
+    NSString *spSub = HorizonIsRussian()
+        ? [NSString stringWithFormat:@"%lu шт. в Documents/shaderpacks/", (unsigned long)spCount]
+        : [NSString stringWithFormat:(spCount == 1 ? @"%lu item in Documents/shaderpacks/" : @"%lu items in Documents/shaderpacks/"), (unsigned long)spCount];
+    [self.filesStack addArrangedSubview:[self packRowTitle:HL(@"Resource Packs", @"Ресурспаки")
+                                                  subtitle:rpSub
                                                     action:@selector(onImportResourcePackTapped)]];
-    [self.filesStack addArrangedSubview:[self packRowTitle:@"Шейдеры"
-                                                  subtitle:[NSString stringWithFormat:@"%lu шт. в Documents/shaderpacks/", (unsigned long)spCount]
+    [self.filesStack addArrangedSubview:[self packRowTitle:HL(@"Shaders", @"Шейдеры")
+                                                  subtitle:spSub
                                                     action:@selector(onImportShaderPackTapped)]];
 
     // 3. Logs & Crash Reports
-    [self.filesStack addArrangedSubview:[self sectionCaption:@"ЛОГИ И ОТЧЁТЫ О СБОЯХ"]];
+    [self.filesStack addArrangedSubview:[self sectionCaption:HL(@"LOGS & CRASH REPORTS", @"ЛОГИ И ОТЧЁТЫ О СБОЯХ")]];
     NSMutableArray<NSString *> *logTitles = [NSMutableArray array];
     NSArray<NSURL *> *logURLs = [self availableLogURLsWithTitles:logTitles];
     UIView *logCard = [self insetCard];
@@ -2078,7 +2127,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     UILabel *logTitle = [[UILabel alloc] init];
     logTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    logTitle.text = @"Логи запуска и краш-репорты";
+    logTitle.text = HL(@"Launch Logs & Crash Reports", @"Логи запуска и краш-репорты");
     logTitle.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
     logTitle.textColor = pl_textPrimary();
     [logCard addSubview:logTitle];
@@ -2087,14 +2136,14 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     logSub.translatesAutoresizingMaskIntoConstraints = NO;
     logSub.text = (logTitles.count > 0)
         ? [logTitles componentsJoinedByString:@" · "]
-        : @"Файлы логов пока не созданы";
+        : HL(@"No log files created yet", @"Файлы логов пока не созданы");
     logSub.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
     logSub.textColor = pl_textSec();
     [logCard addSubview:logSub];
 
     UIButton *openLogBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     openLogBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [openLogBtn setTitle:@"Открыть" forState:UIControlStateNormal];
+    [openLogBtn setTitle:HL(@"Open", @"Открыть") forState:UIControlStateNormal];
     [openLogBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
     openLogBtn.backgroundColor = pl_elevatedBg();
     openLogBtn.layer.cornerRadius = 8.0;
@@ -2108,7 +2157,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     UIButton *shareLogBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     shareLogBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [shareLogBtn setImage:[HorizonIcons iconForKind:HorizonIconShare pointSize:14.0] forState:UIControlStateNormal];
-    [shareLogBtn setTitle:@"Поделиться" forState:UIControlStateNormal];
+    [shareLogBtn setTitle:HL(@"Share", @"Поделиться") forState:UIControlStateNormal];
     shareLogBtn.tintColor = pl_emerald();
     [shareLogBtn setTitleColor:pl_emerald() forState:UIControlStateNormal];
     shareLogBtn.backgroundColor = pl_emeraldSoft();
@@ -2144,7 +2193,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self.filesStack addArrangedSubview:logCard];
 
     // 4. System Diagnostics
-    [self.filesStack addArrangedSubview:[self sectionCaption:@"ДИАГНОСТИКА СИСТЕМЫ"]];
+    [self.filesStack addArrangedSubview:[self sectionCaption:HL(@"SYSTEM DIAGNOSTICS", @"ДИАГНОСТИКА СИСТЕМЫ")]];
     uint64_t physRam = NSProcessInfo.processInfo.physicalMemory;
     size_t availMem = os_proc_available_memory();
     NSDictionary *fsAttrs = [NSFileManager.defaultManager attributesOfFileSystemForPath:self.documentsDir error:nil];
@@ -2162,15 +2211,15 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         [diagStack.trailingAnchor constraintEqualToAnchor:diagCard.trailingAnchor constant:-14.0],
         [diagStack.bottomAnchor constraintEqualToAnchor:diagCard.bottomAnchor constant:-12.0],
     ]];
-    [diagStack addArrangedSubview:[self diagRowKey:@"Оперативная память (RAM)"
-                                             value:[NSString stringWithFormat:@"%@ (свободно процессу: %@)",
+    [diagStack addArrangedSubview:[self diagRowKey:HL(@"Memory (RAM)", @"Оперативная память (RAM)")
+                                             value:[NSString stringWithFormat:HL(@"%@ (available: %@)", @"%@ (доступно процессу: %@)"),
                                                     pl_formatBytes(physRam), pl_formatBytes((uint64_t)availMem)]
                                              color:pl_textPrimary()]];
-    [diagStack addArrangedSubview:[self diagRowKey:@"Свободно на диске"
+    [diagStack addArrangedSubview:[self diagRowKey:HL(@"Free Storage", @"Свободно на диске")
                                              value:pl_formatBytes(freeDisk)
                                              color:pl_textPrimary()]];
     [diagStack addArrangedSubview:[self diagRowKey:@"Increased Memory Limit"
-                                             value:(self.increasedMemoryActive ? @"Активен" : @"Стандартный лимит")
+                                             value:(self.increasedMemoryActive ? HL(@"Active", @"Активен") : HL(@"Standard limit", @"Стандартный лимит"))
                                              color:(self.increasedMemoryActive ? pl_emerald() : pl_amber())]];
     [self.filesStack addArrangedSubview:diagCard];
 }
@@ -2244,6 +2293,32 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
 #pragma mark - Unified UI Refresh
 
+- (void)rebuildForLanguageChange {
+    UIScrollView *activeScroll = self.tabScrollViews[(NSUInteger)self.activeTab];
+    CGPoint savedOffset = activeScroll.contentOffset;
+
+    NSArray<NSString *> *railTitles = @[
+        HL(@"Home", @"Главная"),
+        HL(@"Servers", @"Серверы"),
+        HL(@"Controls", @"Управление"),
+        HL(@"Graphics", @"Графика"),
+        HL(@"Files", @"Файлы"),
+    ];
+    for (NSUInteger i = 0; i < self.tabButtons.count && i < railTitles.count; i++) {
+        self.tabButtons[i].titleLabel.text = railTitles[i];
+    }
+    self.launchingLabel.text = HL(@"Launching Horizon…", @"Запуск Horizon…");
+
+    [self buildHomeTab];
+    [self buildControlsTab];
+    [self buildGraphicsTab];
+    [self refreshAllUI];
+
+    [self.view layoutIfNeeded];
+    CGFloat maxY = MAX(0.0, activeScroll.contentSize.height - activeScroll.bounds.size.height);
+    activeScroll.contentOffset = CGPointMake(0.0, MIN(MAX(0.0, savedOffset.y), maxY));
+}
+
 - (void)refreshAllUI {
     [self updateProfileUI];
     [self updateHomeUpdateBanner];
@@ -2274,23 +2349,23 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     BOOL hasKb = (GCKeyboard.coalescedKeyboard != nil);
     BOOL hasMouse = (GCMouse.mice.count > 0);
 
-    NSString *footerSub = @"Тач · Офлайн";
-    NSString *pillText = @"Сенсорное управление активно";
+    NSString *footerSub = HL(@"Touch · Offline", @"Тач · Офлайн");
+    NSString *pillText = HL(@"Touch controls active", @"Сенсорное управление активно");
     UIColor *dotColor = pl_emerald();
 
     if (pad != nil) {
-        NSString *padName = pad.vendorName.length > 0 ? pad.vendorName : @"Геймпад";
-        footerSub = [NSString stringWithFormat:@"%@ · Офлайн", padName];
-        pillText = [NSString stringWithFormat:@"Подключён геймпад: %@", padName];
+        NSString *padName = pad.vendorName.length > 0 ? pad.vendorName : HL(@"Controller", @"Геймпад");
+        footerSub = [NSString stringWithFormat:HL(@"%@ · Offline", @"%@ · Офлайн"), padName];
+        pillText = [NSString stringWithFormat:HL(@"Controller connected: %@", @"Подключён геймпад: %@"), padName];
     } else if (hasKb && hasMouse) {
-        footerSub = @"Клавиатура+мышь";
-        pillText = @"Подключены клавиатура и мышь";
+        footerSub = HL(@"Keyboard + Mouse", @"Клавиатура + мышь");
+        pillText = HL(@"Keyboard & mouse connected", @"Подключены клавиатура и мышь");
     } else if (hasKb) {
-        footerSub = @"Клавиатура + тач";
-        pillText = @"Подключена аппаратная клавиатура";
+        footerSub = HL(@"Keyboard + Touch", @"Клавиатура + тач");
+        pillText = HL(@"Hardware keyboard connected", @"Подключена аппаратная клавиатура");
     } else if (hasMouse) {
-        footerSub = @"Мышь + тач";
-        pillText = @"Подключена мышь";
+        footerSub = HL(@"Mouse + Touch", @"Мышь + тач");
+        pillText = HL(@"Mouse connected", @"Подключена мышь");
     }
 
     self.footerInputLabel.text = footerSub;
@@ -2299,23 +2374,23 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 }
 
 - (void)updateSummaryTiles {
-    self.tileRenderVal.text = [NSString stringWithFormat:@"%d чанков", self.optRenderDistance];
+    self.tileRenderVal.text = [NSString stringWithFormat:HL(@"%d chunks", @"%d чанков"), self.optRenderDistance];
     self.tileFpsVal.text = (self.optMaxFps >= 260)
-        ? @"Без лимита"
+        ? HL(@"Unlimited", @"Без лимита")
         : [NSString stringWithFormat:@"%d FPS", self.optMaxFps];
 
     HorizonTouchScheme sc = HorizonSettings.shared.scheme;
-    if (sc == HorizonTouchSchemeJoystickCrosshair) self.tileSchemeVal.text = @"Джойстик";
-    else if (sc == HorizonTouchSchemeJoystickTap)  self.tileSchemeVal.text = @"Тап";
-    else                                           self.tileSchemeVal.text = @"Крестовина";
+    if (sc == HorizonTouchSchemeJoystickCrosshair) self.tileSchemeVal.text = HL(@"Joystick", @"Джойстик");
+    else if (sc == HorizonTouchSchemeJoystickTap)  self.tileSchemeVal.text = HL(@"Tap", @"Тап");
+    else                                           self.tileSchemeVal.text = HL(@"D-Pad", @"Крестовина");
 
     if (self.resourcesReady) {
-        self.tileResourcesVal.text = self.resourcesSizeCalculated ? pl_formatBytes(self.resourcesBytes) : @"Готово";
+        self.tileResourcesVal.text = self.resourcesSizeCalculated ? pl_formatBytes(self.resourcesBytes) : HL(@"Ready", @"Готово");
         self.tileResourcesVal.textColor = pl_textPrimary();
         self.tileResourcesIcon.image = [HorizonIcons iconForKind:HorizonIconCheck pointSize:16.0];
         self.tileResourcesIcon.tintColor = pl_emerald();
     } else {
-        self.tileResourcesVal.text = @"Нет ресурсов";
+        self.tileResourcesVal.text = HL(@"Missing", @"Нет ресурсов");
         self.tileResourcesVal.textColor = pl_amber();
         self.tileResourcesIcon.image = [HorizonIcons iconForKind:HorizonIconWarning pointSize:16.0];
         self.tileResourcesIcon.tintColor = pl_amber();
@@ -2329,17 +2404,17 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     if (self.resourcesReady) {
         self.statusDot.backgroundColor = pl_emerald();
         self.statusLabel.text = self.increasedMemoryActive
-            ? @"Increased Memory активен · Metal ещё не загружен"
-            : @"Готов к запуску · Metal ещё не загружен";
+            ? HL(@"Increased Memory active · Metal not loaded yet", @"Increased Memory активен · Metal ещё не загружен")
+            : HL(@"Ready to launch · Metal not loaded yet", @"Готов к запуску · Metal ещё не загружен");
         self.statusLabel.textColor = pl_textSec();
         self.playButton.backgroundColor = pl_emerald();
-        [self.playButton setTitle:@"Играть" forState:UIControlStateNormal];
+        [self.playButton setTitle:HL(@"Play", @"Играть") forState:UIControlStateNormal];
     } else {
         self.statusDot.backgroundColor = pl_amber();
-        self.statusLabel.text = @"Ресурсы отсутствуют — импортируйте во вкладке «Файлы»";
+        self.statusLabel.text = HL(@"Resources missing — import them in the Files tab", @"Ресурсы отсутствуют — импортируйте во вкладке «Файлы»");
         self.statusLabel.textColor = pl_amber();
         self.playButton.backgroundColor = pl_amber();
-        [self.playButton setTitle:@"Импорт" forState:UIControlStateNormal];
+        [self.playButton setTitle:HL(@"Import", @"Импорт") forState:UIControlStateNormal];
     }
 }
 
@@ -2424,9 +2499,13 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         return YES;
     }
     if (showErr) {
-        self.nickErrorLabel.text = (errBuf[0] != '\0')
-            ? [NSString stringWithUTF8String:errBuf]
-            : @"Никнейм: 1–16 ASCII символов без пробелов";
+        NSString *rawErr = (errBuf[0] != '\0') ? [NSString stringWithUTF8String:errBuf] : @"";
+        if (rawErr.length == 0 || [rawErr containsString:@"1–16 ASCII"] || [rawErr containsString:@"1-16 ASCII"]) {
+            self.nickErrorLabel.text = HL(@"Username: 1–16 ASCII characters, no spaces",
+                                          @"Никнейм: 1–16 ASCII-символов без пробелов");
+        } else {
+            self.nickErrorLabel.text = rawErr;
+        }
         self.nickErrorLabel.hidden = NO;
     }
     return NO;
@@ -2481,10 +2560,11 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
     if (!self.resourcesReady) {
         [self selectTab:HorizonLauncherTabFiles];
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Ресурсы не найдены"
-                                                                       message:@"Для запуска Horizon требуется папка Documents/resources/ с файлом horizon-resources.json. Импортируйте папку или .zip архив во вкладке «Файлы»."
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:HL(@"Resources Not Found", @"Ресурсы не найдены")
+                                                                       message:HL(@"Horizon requires Documents/resources/ containing horizon-resources.json. Import the folder or .zip archive in the Files tab.",
+                                                                                  @"Для запуска Horizon требуется папка Documents/resources/ с файлом horizon-resources.json. Импортируйте папку или .zip-архив во вкладке «Файлы».")
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Понятно" style:UIAlertActionStyleDefault handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:HL(@"OK", @"Понятно") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
         return;
     }
@@ -2531,19 +2611,20 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 #pragma mark - Files Import & Logs
 
 - (void)onImportResourcesTapped:(UIButton *)sender {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Импорт ресурсов Horizon"
-                                                                   message:@"Выберите папку с horizon-resources.json или .zip архив."
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:HL(@"Import Horizon Resources", @"Импорт ресурсов Horizon")
+                                                                   message:HL(@"Select a folder containing horizon-resources.json or a .zip archive.",
+                                                                              @"Выберите папку с horizon-resources.json или .zip-архив.")
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf = self;
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Выбрать папку" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+    [sheet addAction:[UIAlertAction actionWithTitle:HL(@"Choose Folder", @"Выбрать папку") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         (void)action;
         [weakSelf presentDocumentPickerForPurpose:HorizonPickerPurposeResourcesFolder];
     }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Выбрать .zip архив" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+    [sheet addAction:[UIAlertAction actionWithTitle:HL(@"Choose .zip Archive", @"Выбрать .zip-архив") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         (void)action;
         [weakSelf presentDocumentPickerForPurpose:HorizonPickerPurposeResourcesZip];
     }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+    [sheet addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
     if (sheet.popoverPresentationController != nil) {
         sheet.popoverPresentationController.sourceView = sender;
         sheet.popoverPresentationController.sourceRect = sender.bounds;
@@ -2581,7 +2662,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
 - (void)showAlertTitle:(NSString *)title message:(NSString *)message {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"ОК" style:UIAlertActionStyleDefault handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:HL(@"OK", @"ОК") style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
 }
 
@@ -2621,16 +2702,18 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         BOOL ok = [NSFileManager.defaultManager copyItemAtURL:picked toURL:[NSURL fileURLWithPath:destPath] error:&err];
         if (scoped) [picked stopAccessingSecurityScopedResource];
         if (!ok) {
-            [self showAlertTitle:@"Ошибка импорта" message:err.localizedDescription ?: @"Не удалось скопировать файл"];
+            [self showAlertTitle:HL(@"Import Failed", @"Ошибка импорта")
+                         message:err.localizedDescription ?: HL(@"Failed to copy file.", @"Не удалось скопировать файл.")];
         } else {
             [self rebuildFilesTab];
-            [self showAlertTitle:@"Импорт завершён" message:[NSString stringWithFormat:@"Файл %@ добавлен.", picked.lastPathComponent]];
+            [self showAlertTitle:HL(@"Import Complete", @"Импорт завершён")
+                         message:[NSString stringWithFormat:HL(@"Added %@.", @"Файл %@ добавлен."), picked.lastPathComponent]];
         }
         return;
     }
 
     if (purpose == HorizonPickerPurposeResourcesZip) {
-        [self setImportBusy:YES message:@"Распаковка архива ресурсов…"];
+        [self setImportBusy:YES message:HL(@"Extracting resources archive…", @"Распаковка архива ресурсов…")];
         NSString *destDir = self.resourcesDir;
         __weak typeof(self) weakSelf = self;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -2643,18 +2726,26 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
                 sizeof(errBuf)
             );
             if (scoped) [picked stopAccessingSecurityScopedResource];
-            NSString *errMsg = (errBuf[0] != '\0') ? [NSString stringWithUTF8String:errBuf] : @"Не удалось распаковать архив";
+            NSString *rawErr = (errBuf[0] != '\0') ? [NSString stringWithUTF8String:errBuf] : @"";
+            NSString *errMsg = nil;
+            if (rawErr.length == 0) {
+                errMsg = HL(@"Failed to extract archive.", @"Не удалось распаковать архив.");
+            } else if ([rawErr containsString:@"horizon-resources.json not found"]) {
+                errMsg = HL(@"horizon-resources.json was not found in the archive.", @"В архиве не найден файл horizon-resources.json.");
+            } else {
+                errMsg = rawErr;
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 typeof(self) s = weakSelf;
                 if (s == nil) return;
                 [s setImportBusy:NO message:nil];
                 if (count < 0) {
-                    [s showAlertTitle:@"Ошибка импорта" message:errMsg];
+                    [s showAlertTitle:HL(@"Import Failed", @"Ошибка импорта") message:errMsg];
                 } else {
                     s.resourcesSizeCalculated = NO;
                     [s refreshResourcesSizeAsync];
-                    [s showAlertTitle:@"Ресурсы импортированы"
-                              message:[NSString stringWithFormat:@"Распаковано файлов: %d.", (int)count]];
+                    [s showAlertTitle:HL(@"Resources Imported", @"Ресурсы импортированы")
+                              message:[NSString stringWithFormat:HL(@"Extracted %d files.", @"Распаковано файлов: %d."), (int)count]];
                 }
             });
         });
@@ -2662,7 +2753,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     }
 
     if (purpose == HorizonPickerPurposeResourcesFolder) {
-        [self setImportBusy:YES message:@"Копирование папки ресурсов…"];
+        [self setImportBusy:YES message:HL(@"Copying resources folder…", @"Копирование папки ресурсов…")];
         NSString *destDir = self.resourcesDir;
         __weak typeof(self) weakSelf = self;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -2692,14 +2783,17 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
                 if (s == nil) return;
                 [s setImportBusy:NO message:nil];
                 if (srcRoot == nil) {
-                    [s showAlertTitle:@"Ресурсы не найдены"
-                              message:@"В выбранной папке (и вложенных папках) не найден файл horizon-resources.json."];
+                    [s showAlertTitle:HL(@"Resources Not Found", @"Ресурсы не найдены")
+                              message:HL(@"horizon-resources.json was not found in the selected folder (or its subfolders).",
+                                         @"В выбранной папке (и вложенных папках) не найден файл horizon-resources.json.")];
                 } else if (!ok) {
-                    [s showAlertTitle:@"Ошибка копирования" message:err.localizedDescription ?: @"Не удалось скопировать ресурсы"];
+                    [s showAlertTitle:HL(@"Copy Failed", @"Ошибка копирования")
+                              message:err.localizedDescription ?: HL(@"Failed to copy resources.", @"Не удалось скопировать ресурсы.")];
                 } else {
                     s.resourcesSizeCalculated = NO;
                     [s refreshResourcesSizeAsync];
-                    [s showAlertTitle:@"Ресурсы импортированы" message:@"Папка resources готова к запуску."];
+                    [s showAlertTitle:HL(@"Resources Imported", @"Ресурсы импортированы")
+                              message:HL(@"The resources folder is ready to launch.", @"Папка resources готова к запуску.")];
                 }
             });
         });
@@ -2751,14 +2845,15 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
         return;
     }
     HorizonOTARelease *rel = ota.latestRelease;
-    self.homeUpdateTitleLabel.text = [NSString stringWithFormat:@"Доступно обновление %@", rel.version];
+    self.homeUpdateTitleLabel.text = [NSString stringWithFormat:HL(@"Update %@ available", @"Доступно обновление %@"), rel.version];
     NSString *notes = pl_firstLineSummary(rel.releaseNotes);
     if (notes.length > 0) {
         self.homeUpdateSubLabel.text = notes;
     } else if (rel.sizeBytes > 0) {
-        self.homeUpdateSubLabel.text = [NSString stringWithFormat:@"Новая сборка готова к установке · %@", pl_formatBytes(rel.sizeBytes)];
+        self.homeUpdateSubLabel.text = [NSString stringWithFormat:HL(@"New build ready to install · %@", @"Новая сборка готова к установке · %@"), pl_formatBytes(rel.sizeBytes)];
     } else {
-        self.homeUpdateSubLabel.text = @"Новая сборка готова к установке через Feather / SideStore / AltStore";
+        self.homeUpdateSubLabel.text = HL(@"New build ready to install via Feather / SideStore / AltStore",
+                                          @"Новая сборка готова к установке через Feather / SideStore / AltStore");
     }
     self.homeUpdateBanner.hidden = NO;
 }
@@ -2767,26 +2862,26 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     HorizonOTAUpdater *ota = HorizonOTAUpdater.shared;
     HorizonSettings *settings = HorizonSettings.shared;
 
-    [self.filesStack addArrangedSubview:[self sectionCaption:@"ОБНОВЛЕНИЯ (OTA)"]];
+    [self.filesStack addArrangedSubview:[self sectionCaption:HL(@"UPDATES (OTA)", @"ОБНОВЛЕНИЯ (OTA)")]];
 
     // Row 1: Current version, live status, Check / Update action
     UIView *statusCard = [self insetCard];
     HorizonIconKind iconKind = HorizonIconDownload;
     UIColor *iconColor = pl_textSec();
-    NSString *statusLine = @"Проверка не выполнялась";
+    NSString *statusLine = HL(@"Not checked yet", @"Проверка не выполнялась");
     UIColor *statusColor = pl_textMuted();
 
     switch (ota.status) {
         case HorizonOTAStatusChecking:
             iconKind = HorizonIconRefresh;
             iconColor = pl_emerald();
-            statusLine = @"Проверка…";
+            statusLine = HL(@"Checking…", @"Проверка…");
             statusColor = pl_textSec();
             break;
         case HorizonOTAStatusUpToDate:
             iconKind = HorizonIconCheck;
             iconColor = pl_emerald();
-            statusLine = @"Последняя версия";
+            statusLine = HL(@"Up to date", @"Последняя версия");
             statusColor = pl_emerald();
             break;
         case HorizonOTAStatusUpdateAvailable: {
@@ -2798,9 +2893,9 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
                 : @"";
             NSString *note = pl_firstLineSummary(rel.releaseNotes);
             if (note.length > 0) {
-                statusLine = [NSString stringWithFormat:@"Доступна %@%@ — %@", rel.version ?: @"", sz, note];
+                statusLine = [NSString stringWithFormat:HL(@"%@ available%@ — %@", @"Доступна %@%@ — %@"), rel.version ?: @"", sz, note];
             } else {
-                statusLine = [NSString stringWithFormat:@"Доступна %@%@", rel.version ?: @"", sz];
+                statusLine = [NSString stringWithFormat:HL(@"%@ available%@", @"Доступна %@%@"), rel.version ?: @"", sz];
             }
             statusColor = pl_rgb(122, 238, 164, 1.0);
             break;
@@ -2808,7 +2903,9 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
         case HorizonOTAStatusError:
             iconKind = HorizonIconWarning;
             iconColor = pl_amber();
-            statusLine = ota.lastErrorMessage.length > 0 ? ota.lastErrorMessage : @"Не удалось проверить обновления";
+            statusLine = ota.lastErrorMessage.length > 0
+                ? ota.lastErrorMessage
+                : HL(@"Failed to check for updates", @"Не удалось проверить обновления");
             statusColor = pl_amber();
             break;
         case HorizonOTAStatusIdle:
@@ -2850,7 +2947,7 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
 
     UIView *rightAnchor = primaryBtn;
     if (ota.isUpdateAvailable) {
-        [primaryBtn setTitle:@"Обновить" forState:UIControlStateNormal];
+        [primaryBtn setTitle:HL(@"Update", @"Обновить") forState:UIControlStateNormal];
         [primaryBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
         primaryBtn.backgroundColor = pl_emerald();
         [primaryBtn addTarget:self action:@selector(onOTAInstallTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -2872,13 +2969,13 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
         ]];
         rightAnchor = recheckBtn;
     } else if (ota.status == HorizonOTAStatusChecking) {
-        [primaryBtn setTitle:@"Проверка…" forState:UIControlStateNormal];
+        [primaryBtn setTitle:HL(@"Checking…", @"Проверка…") forState:UIControlStateNormal];
         [primaryBtn setTitleColor:pl_textSec() forState:UIControlStateNormal];
         primaryBtn.backgroundColor = pl_elevatedBg();
         primaryBtn.enabled = NO;
         primaryBtn.alpha = 0.7;
     } else {
-        [primaryBtn setTitle:@"Проверить" forState:UIControlStateNormal];
+        [primaryBtn setTitle:HL(@"Check", @"Проверить") forState:UIControlStateNormal];
         [primaryBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
         primaryBtn.backgroundColor = pl_elevatedBg();
         [primaryBtn addTarget:self action:@selector(onOTACheckTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -2908,12 +3005,12 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     UIView *instCard = [self insetCard];
     UILabel *instLbl = [[UILabel alloc] init];
     instLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    instLbl.text = @"Установщик";
+    instLbl.text = HL(@"Installer", @"Установщик");
     instLbl.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightMedium];
     instLbl.textColor = pl_textPrimary();
     [instCard addSubview:instLbl];
 
-    UISegmentedControl *instSeg = [self styledSegmentedControlWithItems:@[@"Авто", @"Feather", @"SideStore", @"AltStore", @"Safari"]
+    UISegmentedControl *instSeg = [self styledSegmentedControlWithItems:@[HL(@"Auto", @"Авто"), @"Feather", @"SideStore", @"AltStore", @"Safari"]
                                                                  action:@selector(onOTAInstallerChanged:)];
     instSeg.translatesAutoresizingMaskIntoConstraints = NO;
     instSeg.backgroundColor = pl_elevatedBg();
@@ -2936,14 +3033,14 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     UIView *repoCard = [self insetCard];
     UILabel *repoTitle = [[UILabel alloc] init];
     repoTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    repoTitle.text = @"Репозиторий OTA";
+    repoTitle.text = HL(@"OTA Repository", @"Репозиторий OTA");
     repoTitle.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
     repoTitle.textColor = pl_textPrimary();
     [repoCard addSubview:repoTitle];
 
     UILabel *repoSub = [[UILabel alloc] init];
     repoSub.translatesAutoresizingMaskIntoConstraints = NO;
-    repoSub.text = @"Добавить source.json для автоматических обновлений";
+    repoSub.text = HL(@"Add source.json for automatic updates", @"Добавить source.json для автоматических обновлений");
     repoSub.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
     repoSub.textColor = pl_textSec();
     repoSub.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -2968,7 +3065,7 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     [sideStoreBtn addTarget:self action:@selector(onOTAAddSideStoreRepoTapped) forControlEvents:UIControlEventTouchUpInside];
 
     UIButton *copyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [copyBtn setTitle:@"Копировать" forState:UIControlStateNormal];
+    [copyBtn setTitle:HL(@"Copy", @"Копировать") forState:UIControlStateNormal];
     [copyBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
     copyBtn.backgroundColor = pl_elevatedBg();
     copyBtn.layer.cornerRadius = 8.0;
@@ -2999,8 +3096,9 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     [self.filesStack addArrangedSubview:repoCard];
 
     // Row 4: Auto-check switch
-    UISwitch *autoCheckSw = [self makeToggleRow:@"Автопроверка при запуске"
-                                       subtitle:@"Проверять наличие новой сборки при открытии лаунчера"
+    UISwitch *autoCheckSw = [self makeToggleRow:HL(@"Auto-Check on Startup", @"Автопроверка при запуске")
+                                       subtitle:HL(@"Check for a newer build when opening the launcher",
+                                                   @"Проверять наличие новой сборки при открытии лаунчера")
                                          action:@selector(onOTAAutoCheckChanged:)
                                         inStack:self.filesStack];
     autoCheckSw.on = settings.autoCheckUpdates;
@@ -3009,7 +3107,7 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     UIView *urlCard = [self insetCard];
     UILabel *urlTitle = [[UILabel alloc] init];
     urlTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    urlTitle.text = @"Источник source.json";
+    urlTitle.text = HL(@"Source URL (source.json)", @"Источник source.json");
     urlTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
     urlTitle.textColor = pl_textSec();
     [urlCard addSubview:urlTitle];
@@ -3024,7 +3122,7 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
 
     UIButton *editUrlBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     editUrlBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [editUrlBtn setTitle:@"Изменить" forState:UIControlStateNormal];
+    [editUrlBtn setTitle:HL(@"Edit", @"Изменить") forState:UIControlStateNormal];
     [editUrlBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
     editUrlBtn.backgroundColor = pl_elevatedBg();
     editUrlBtn.layer.cornerRadius = 8.0;
@@ -3082,21 +3180,22 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
 
 - (void)onOTACopySourceURLTapped:(UIButton *)sender {
     UIPasteboard.generalPasteboard.string = HorizonSettings.shared.otaSourceURL;
-    [sender setTitle:@"Скопировано" forState:UIControlStateNormal];
+    [sender setTitle:HL(@"Copied", @"Скопировано") forState:UIControlStateNormal];
     [sender setTitleColor:pl_emerald() forState:UIControlStateNormal];
     __weak UIButton *weakBtn = sender;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.8 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         UIButton *btn = weakBtn;
         if (btn == nil) return;
-        [btn setTitle:@"Копировать" forState:UIControlStateNormal];
+        [btn setTitle:HL(@"Copy", @"Копировать") forState:UIControlStateNormal];
         [btn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
     });
 }
 
 - (void)onOTAEditSourceURLTapped {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Источник OTA (source.json)"
-                                                                   message:@"Укажите HTTPS-ссылку на AltStore / Feather Source v2 JSON."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:HL(@"OTA Source (source.json)", @"Источник OTA (source.json)")
+                                                                   message:HL(@"Enter an HTTPS URL to an AltStore / Feather Source v2 JSON manifest.",
+                                                                              @"Укажите HTTPS-ссылку на AltStore / Feather Source v2 JSON.")
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull tf) {
         tf.text = HorizonSettings.shared.otaSourceURL;
@@ -3108,21 +3207,23 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
     }];
     __weak typeof(self) weakSelf = self;
     __weak UIAlertController *weakAlert = alert;
-    [alert addAction:[UIAlertAction actionWithTitle:@"Сохранить"
+    [alert addAction:[UIAlertAction actionWithTitle:HL(@"Save", @"Сохранить")
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
         (void)action;
         NSString *val = [weakAlert.textFields.firstObject.text
             stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (val.length > 0 && ![val.lowercaseString hasPrefix:@"https://"] && ![val.lowercaseString hasPrefix:@"http://"]) {
-            [weakSelf showAlertTitle:@"Некорректный URL" message:@"Ссылка должна начинаться с https:// или http://"];
+            [weakSelf showAlertTitle:HL(@"Invalid URL", @"Некорректный URL")
+                             message:HL(@"URL must start with https:// or http://",
+                                        @"Ссылка должна начинаться с https:// или http://")];
             return;
         }
         HorizonSettings.shared.otaSourceURL = val ?: @"";
         [weakSelf rebuildFilesTab];
         [HorizonOTAUpdater.shared checkForUpdatesForce:YES];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"По умолчанию"
+    [alert addAction:[UIAlertAction actionWithTitle:HL(@"Default", @"По умолчанию")
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
         (void)action;
@@ -3130,7 +3231,7 @@ static NSString *pl_firstLineSummary(NSString * _Nullable text) {
         [weakSelf rebuildFilesTab];
         [HorizonOTAUpdater.shared checkForUpdatesForce:YES];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:HL(@"Cancel", @"Отмена") style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

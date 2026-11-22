@@ -1,5 +1,6 @@
 // horizon-ios: native UIKit Bedrock HUD views.
 #import "HorizonTouchViews.h"
+#import "HorizonL10n.h"
 #import <QuartzCore/QuartzCore.h>
 #include <math.h>
 
@@ -627,7 +628,7 @@ static UIColor *bedrockBorderColor(BOOL pressed, BOOL active, CGFloat opacity) {
         _textField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 9.0, 1.0)];
         _textField.leftViewMode = UITextFieldViewModeAlways;
         _textField.attributedPlaceholder = [[NSAttributedString alloc]
-            initWithString:@"Chat or /command..."
+            initWithString:HL(@"Chat or /command...", @"Чат или /команда...")
                 attributes:@{NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.42]}];
         [_textField addTarget:self action:@selector(onTextChanged) forControlEvents:UIControlEventEditingChanged];
         [self addSubview:_textField];
@@ -639,7 +640,7 @@ static UIColor *bedrockBorderColor(BOOL pressed, BOOL active, CGFloat opacity) {
         [_downButton setImage:[HorizonIcons iconForKind:HorizonIconDpadDown pointSize:13.0] forState:UIControlStateNormal];
         _upButton.tintColor = UIColor.whiteColor;
         _downButton.tintColor = UIColor.whiteColor;
-        _sendButton = [self makeToolbarButtonWithTitle:@"Send" bg:sendBg action:@selector(onSend)];
+        _sendButton = [self makeToolbarButtonWithTitle:HL(@"Send", @"Отпр.") bg:sendBg action:@selector(onSend)];
 
         for (UIView *v in @[_tabButton, _upButton, _downButton, _sendButton]) {
             [self addSubview:v];

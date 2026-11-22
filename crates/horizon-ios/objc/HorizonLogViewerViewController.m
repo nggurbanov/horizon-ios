@@ -1,6 +1,7 @@
 // horizon-ios: scrollable monospace log & crash report viewer sheet.
 #import "HorizonLogViewerViewController.h"
 #import "HorizonIcons.h"
+#import "HorizonL10n.h"
 
 static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     return [UIColor colorWithRed:r / 255.0 green:g / 255.0 blue:b / 255.0 alpha:a];
@@ -46,14 +47,14 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     UILabel *title = [[UILabel alloc] init];
     title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = @"Логи и отчёты";
+    title.text = HL(@"Logs & Crash Reports", @"Логи и отчёты");
     title.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightBold];
     title.textColor = hl_color(242, 246, 250, 1.0);
     [header addSubview:title];
 
     UIButton *copyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     copyBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [copyBtn setTitle:@"Копировать" forState:UIControlStateNormal];
+    [copyBtn setTitle:HL(@"Copy", @"Копировать") forState:UIControlStateNormal];
     [copyBtn setTitleColor:hl_color(152, 166, 184, 1.0) forState:UIControlStateNormal];
     copyBtn.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightMedium];
     [copyBtn addTarget:self action:@selector(onCopy) forControlEvents:UIControlEventTouchUpInside];
@@ -62,7 +63,7 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     self.shareButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.shareButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.shareButton setImage:[HorizonIcons iconForKind:HorizonIconShare pointSize:16.0] forState:UIControlStateNormal];
-    [self.shareButton setTitle:@"Поделиться" forState:UIControlStateNormal];
+    [self.shareButton setTitle:HL(@"Share", @"Поделиться") forState:UIControlStateNormal];
     self.shareButton.tintColor = hl_color(51, 189, 102, 1.0);
     [self.shareButton setTitleColor:hl_color(51, 189, 102, 1.0) forState:UIControlStateNormal];
     self.shareButton.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
@@ -72,7 +73,7 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 
     UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     doneBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [doneBtn setTitle:@"Готово" forState:UIControlStateNormal];
+    [doneBtn setTitle:HL(@"Close", @"Закрыть") forState:UIControlStateNormal];
     [doneBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     doneBtn.backgroundColor = hl_color(51, 189, 102, 1.0);
     doneBtn.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
@@ -81,7 +82,7 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     [doneBtn addTarget:self action:@selector(onDone) forControlEvents:UIControlEventTouchUpInside];
     [header addSubview:doneBtn];
 
-    NSArray<NSString *> *items = self.titles.count > 0 ? self.titles : @[@"Лог"];
+    NSArray<NSString *> *items = self.titles.count > 0 ? self.titles : @[HL(@"Log", @"Лог")];
     self.selector = [[UISegmentedControl alloc] initWithItems:items];
     self.selector.translatesAutoresizingMaskIntoConstraints = NO;
     self.selector.selectedSegmentIndex = 0;
@@ -151,13 +152,13 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
 - (void)loadSelectedFile {
     NSURL *url = [self selectedFileURL];
     if (url == nil) {
-        self.textView.text = @"Лог-файлы пока отсутствуют.";
+        self.textView.text = HL(@"No log files available yet.", @"Лог-файлы пока отсутствуют.");
         return;
     }
     // Read up to last 256 KB so huge logs open instantly without stalling UI.
     NSFileHandle *fh = [NSFileHandle fileHandleForReadingFromURL:url error:nil];
     if (fh == nil) {
-        self.textView.text = @"Не удалось прочитать файл.";
+        self.textView.text = HL(@"Failed to read file.", @"Не удалось прочитать файл.");
         return;
     }
     unsigned long long size = [fh seekToEndOfFile];
@@ -165,7 +166,9 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
     NSString *prefix = @"";
     if (size > kMaxBytes) {
         [fh seekToFileOffset:(size - kMaxBytes)];
-        prefix = [NSString stringWithFormat:@"... показаны последние 256 КБ из %.1f КБ ...\n\n", size / 1024.0];
+        prefix = [NSString stringWithFormat:HL(@"... showing last 256 KB of %.1f KB ...\n\n",
+                                               @"... показаны последние 256 КБ из %.1f КБ ...\n\n"),
+                                            size / 1024.0];
     } else {
         [fh seekToFileOffset:0];
     }
@@ -177,7 +180,7 @@ static UIColor *hl_color(uint8_t r, uint8_t g, uint8_t b, CGFloat a) {
         body = [[NSString alloc] initWithData:data encoding:NSISOLatin1StringEncoding] ?: @"";
     }
     if (body.length == 0) {
-        self.textView.text = @"(файл пуст)";
+        self.textView.text = HL(@"(file is empty)", @"(файл пуст)");
     } else {
         self.textView.text = [prefix stringByAppendingString:body];
         // Scroll to bottom (most recent entries).

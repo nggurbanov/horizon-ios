@@ -2,6 +2,7 @@
 // Every icon is drawn directly on a normalized 24x24 vector grid with rounded strokes and
 // crisp silhouettes (zero Unicode/emoji glyph reliance).
 #import "HorizonIcons.h"
+#import "HorizonL10n.h"
 #include "horizon_bridge.h"
 #include <math.h>
 
@@ -46,24 +47,24 @@
 }
 
 + (NSString * _Nullable)labelForUseVerb:(uint8_t)useVerb activeUse:(uint8_t)activeUse {
-    if (activeUse == HORIZON_ACTIVE_SHOOT) return @"Release";
-    if (activeUse == HORIZON_ACTIVE_THROW) return @"Throw";
-    if (activeUse == HORIZON_ACTIVE_STOP)  return @"Stop";
+    if (activeUse == HORIZON_ACTIVE_SHOOT) return HL(@"Release", @"Отпустить");
+    if (activeUse == HORIZON_ACTIVE_THROW) return HL(@"Throw", @"Бросить");
+    if (activeUse == HORIZON_ACTIVE_STOP)  return HL(@"Stop", @"Стоп");
     switch (useVerb) {
-        case HORIZON_VERB_OPEN:  return @"Open";
-        case HORIZON_VERB_TRADE: return @"Trade";
-        case HORIZON_VERB_FEED:  return @"Feed";
-        case HORIZON_VERB_RIDE:  return @"Ride";
-        case HORIZON_VERB_EAT:   return @"Eat";
-        case HORIZON_VERB_DRINK: return @"Drink";
-        case HORIZON_VERB_FISH:  return @"Fish";
-        case HORIZON_VERB_SHOOT: return @"Shoot";
-        case HORIZON_VERB_LOAD:  return @"Load";
-        case HORIZON_VERB_RAISE: return @"Shield";
-        case HORIZON_VERB_BOOST: return @"Boost";
-        case HORIZON_VERB_ZOOM:  return @"Zoom";
-        case HORIZON_VERB_EQUIP: return @"Equip";
-        case HORIZON_VERB_USE:   return @"Use";
+        case HORIZON_VERB_OPEN:  return HL(@"Open", @"Открыть");
+        case HORIZON_VERB_TRADE: return HL(@"Trade", @"Торговать");
+        case HORIZON_VERB_FEED:  return HL(@"Feed", @"Покормить");
+        case HORIZON_VERB_RIDE:  return HL(@"Ride", @"Сесть");
+        case HORIZON_VERB_EAT:   return HL(@"Eat", @"Есть");
+        case HORIZON_VERB_DRINK: return HL(@"Drink", @"Выпить");
+        case HORIZON_VERB_FISH:  return HL(@"Fish", @"Ловить");
+        case HORIZON_VERB_SHOOT: return HL(@"Shoot", @"Выстрел");
+        case HORIZON_VERB_LOAD:  return HL(@"Load", @"Зарядить");
+        case HORIZON_VERB_RAISE: return HL(@"Shield", @"Щит");
+        case HORIZON_VERB_BOOST: return HL(@"Boost", @"Ускорение");
+        case HORIZON_VERB_ZOOM:  return HL(@"Zoom", @"Приблизить");
+        case HORIZON_VERB_EQUIP: return HL(@"Equip", @"Надеть");
+        case HORIZON_VERB_USE:   return HL(@"Use", @"Использ.");
         default:                 return nil;
     }
 }

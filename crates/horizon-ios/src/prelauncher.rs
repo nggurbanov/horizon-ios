@@ -56,7 +56,7 @@ pub fn load_or_create_player_name(dir: &Path) -> String {
 pub fn save_player_name(dir: &Path, name: &str) -> Result<String, String> {
     let trimmed = name.trim();
     if !is_valid_player_name(trimmed) {
-        return Err("Никнейм должен содержать от 1 до 16 ASCII-символов без пробелов".into());
+        return Err("Username must be 1–16 ASCII characters with no spaces".into());
     }
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let path = dir.join(PLAYER_FILE);
@@ -102,7 +102,7 @@ pub fn upsert_server(
 ) -> Result<Vec<ServerRow>, String> {
     let ip_trimmed = ip.trim();
     if touch_bridge::normalize_server_address(ip_trimmed).is_none() {
-        return Err("Некорректный адрес сервера".into());
+        return Err("Invalid server address".into());
     }
     let name_trimmed = name.trim();
     let final_name = if name_trimmed.is_empty() {
@@ -144,7 +144,7 @@ pub fn delete_server(path: &Path, index: usize) -> Result<Vec<ServerRow>, String
     let _guard = servers::lock();
     let (mut shown, hidden) = servers::load_all(path);
     if index >= shown.len() {
-        return Err("Сервер не найден".into());
+        return Err("Server not found".into());
     }
     shown.remove(index);
     servers::save_all(path, &shown, &hidden).map_err(|e| e.to_string())?;
@@ -219,7 +219,7 @@ pub fn ping_server(address: &str, timeout: Duration) -> PingResult {
         error: err,
     };
     let Some((host, port)) = servers::parse_address(address) else {
-        return failed("Некорректный адрес".into());
+        return failed("Invalid address".into());
     };
     let mut conn = match Connection::connect_server(&host, port, timeout) {
         Ok(c) => c,
@@ -250,7 +250,7 @@ pub fn ping_server(address: &str, timeout: Duration) -> PingResult {
             Ok(v) => v,
             Err(e) => return failed(e.to_string()),
         },
-        Ok(_) => return failed("Неожиданный ответ статуса".into()),
+        Ok(_) => return failed("Unexpected status response".into()),
         Err(e) => return failed(e.to_string()),
     };
 
@@ -547,9 +547,9 @@ pub fn scan_local_worlds(saves_dir: &Path) -> Vec<LocalWorldInfo> {
 /// Extracts a Horizon resources `.zip` archive into `dest_resources_dir`, automatically stripping
 /// nested wrapper folders (e.g. `resources/horizon-resources-26.3/horizon-resources.json`).
 pub fn extract_resources_zip(zip_path: &Path, dest_resources_dir: &Path) -> Result<usize, String> {
-    let file = fs::File::open(zip_path).map_err(|e| format!("Не удалось открыть архив: {e}"))?;
+    let file = fs::File::open(zip_path).map_err(|e| format!("Failed to open archive: {e}"))?;
     let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("Повреждённый ZIP-архив: {e}"))?;
+        zip::ZipArchive::new(file).map_err(|e| format!("Invalid or corrupted ZIP archive: {e}"))?;
 
     // Locate `horizon-resources.json` (preferring shallowest path, ignoring `__MACOSX`).
     let mut manifest_prefix: Option<PathBuf> = None;
@@ -557,7 +557,7 @@ pub fn extract_resources_zip(zip_path: &Path, dest_resources_dir: &Path) -> Resu
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
-            .map_err(|e| format!("Ошибка чтения архива: {e}"))?;
+            .map_err(|e| format!("Failed to read archive: {e}"))?;
         let Some(rel) = entry.enclosed_name() else {
             continue;
         };
@@ -578,17 +578,17 @@ pub fn extract_resources_zip(zip_path: &Path, dest_resources_dir: &Path) -> Resu
     }
 
     let Some(prefix) = manifest_prefix else {
-        return Err("В архиве не найден файл horizon-resources.json".into());
+        return Err("horizon-resources.json not found in archive".into());
     };
 
     fs::create_dir_all(dest_resources_dir)
-        .map_err(|e| format!("Не удалось создать папку resources: {e}"))?;
+        .map_err(|e| format!("Failed to create resources folder: {e}"))?;
 
     let mut extracted = 0usize;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| format!("Ошибка чтения архива: {e}"))?;
+            .map_err(|e| format!("Failed to read archive: {e}"))?;
         let Some(rel) = entry.enclosed_name() else {
             continue;
         };
@@ -618,7 +618,7 @@ pub fn extract_resources_zip(zip_path: &Path, dest_resources_dir: &Path) -> Resu
     }
 
     if !dest_resources_dir.join("horizon-resources.json").is_file() {
-        return Err("Не удалось распаковать horizon-resources.json".into());
+        return Err("Failed to extract horizon-resources.json".into());
     }
     Ok(extracted)
 }

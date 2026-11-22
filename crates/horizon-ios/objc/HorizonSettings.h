@@ -18,6 +18,12 @@ typedef NS_ENUM(NSInteger, HorizonOTAInstaller) {
     HorizonOTAInstallerDirect = 4,    // Open raw .ipa URL in Safari
 };
 
+typedef NS_ENUM(NSInteger, HorizonLauncherLanguage) {
+    HorizonLauncherLanguageAuto = 0,    // System preferred language (Russian if ru*, else English)
+    HorizonLauncherLanguageEnglish = 1, // English
+    HorizonLauncherLanguageRussian = 2, // Russian
+};
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface HorizonSettings : NSObject
@@ -38,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat gyroSensitivity;   // 0.20 .. 3.00 (default 1.0)
 @property (nonatomic, assign) BOOL skipLauncher;         // default NO
 @property (nonatomic, copy, nullable) NSString *lastQuickServerAddress;
+@property (nonatomic, assign) HorizonLauncherLanguage launcherLanguage; // default Auto (0)
 
 // OTA update settings
 @property (nonatomic, assign) HorizonOTAInstaller otaInstaller; // default Auto

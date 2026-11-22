@@ -1,5 +1,6 @@
 // horizon-ios: native compact Bedrock touch settings sheet presented over the game.
 #import "HorizonTouchSettingsViewController.h"
+#import "HorizonL10n.h"
 #import "HorizonSettings.h"
 
 @interface HorizonTouchSettingsViewController ()
@@ -43,14 +44,14 @@
 
     UILabel *title = [[UILabel alloc] init];
     title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = @"Touch Controls";
+    title.text = HL(@"Touch Controls", @"Сенсорное управление");
     title.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
     title.textColor = UIColor.whiteColor;
     [header addSubview:title];
 
     UIButton *resetBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     resetBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [resetBtn setTitle:@"Reset" forState:UIControlStateNormal];
+    [resetBtn setTitle:HL(@"Reset", @"Сброс") forState:UIControlStateNormal];
     [resetBtn setTitleColor:[UIColor colorWithRed:1.0 green:0.55 blue:0.45 alpha:1.0] forState:UIControlStateNormal];
     resetBtn.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium];
     [resetBtn addTarget:self action:@selector(onReset) forControlEvents:UIControlEventTouchUpInside];
@@ -58,7 +59,7 @@
 
     UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     doneBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [doneBtn setTitle:@"Done" forState:UIControlStateNormal];
+    [doneBtn setTitle:HL(@"Done", @"Готово") forState:UIControlStateNormal];
     [doneBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     doneBtn.backgroundColor = [UIColor colorWithRed:0.20 green:0.74 blue:0.40 alpha:1.0];
     doneBtn.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
@@ -106,40 +107,44 @@
 
     // Control scheme segmented picker
     UILabel *schemeTitle = [[UILabel alloc] init];
-    schemeTitle.text = @"Control Mode";
+    schemeTitle.text = HL(@"Control Mode", @"Режим управления");
     schemeTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
     schemeTitle.textColor = [UIColor colorWithWhite:1.0 alpha:0.70];
     [stack addArrangedSubview:schemeTitle];
 
-    self.schemeControl = [[UISegmentedControl alloc] initWithItems:@[@"Crosshair", @"Tap to Interact", @"Classic D-Pad"]];
+    self.schemeControl = [[UISegmentedControl alloc] initWithItems:@[
+        HL(@"Crosshair", @"Прицел"),
+        HL(@"Tap to Interact", @"Тап по миру"),
+        HL(@"Classic D-Pad", @"Крестовина"),
+    ]];
     self.schemeControl.selectedSegmentTintColor = [UIColor colorWithRed:0.20 green:0.74 blue:0.40 alpha:1.0];
     [self.schemeControl setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.whiteColor} forState:UIControlStateNormal];
     [self.schemeControl setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.whiteColor} forState:UIControlStateSelected];
     [self.schemeControl addTarget:self action:@selector(onChanged) forControlEvents:UIControlEventValueChanged];
     [stack addArrangedSubview:self.schemeControl];
 
-    self.floatingSwitch = [self addToggleRow:@"Floating Joystick" toStack:stack];
-    self.autoJumpSwitch = [self addToggleRow:@"Auto-Jump (Touch Mode)" toStack:stack];
+    self.floatingSwitch = [self addToggleRow:HL(@"Floating Joystick", @"Плавающий джойстик") toStack:stack];
+    self.autoJumpSwitch = [self addToggleRow:HL(@"Auto-Jump (Touch Mode)", @"Автопрыжок (сенсорный режим)") toStack:stack];
 
     UILabel *lbl = nil;
-    self.buttonScaleSlider = [self addSliderRow:@"Button Size" min:0.70 max:1.40 valueLabel:&lbl toStack:stack];
+    self.buttonScaleSlider = [self addSliderRow:HL(@"Button Size", @"Размер кнопок") min:0.70 max:1.40 valueLabel:&lbl toStack:stack];
     self.buttonScaleValue = lbl;
 
-    self.opacitySlider = [self addSliderRow:@"Button Opacity" min:0.25 max:1.00 valueLabel:&lbl toStack:stack];
+    self.opacitySlider = [self addSliderRow:HL(@"Button Opacity", @"Прозрачность кнопок") min:0.25 max:1.00 valueLabel:&lbl toStack:stack];
     self.opacityValue = lbl;
 
-    self.sensitivitySlider = [self addSliderRow:@"Camera Sensitivity" min:0.30 max:2.50 valueLabel:&lbl toStack:stack];
+    self.sensitivitySlider = [self addSliderRow:HL(@"Camera Sensitivity", @"Чувствительность камеры") min:0.30 max:2.50 valueLabel:&lbl toStack:stack];
     self.sensitivityValue = lbl;
 
-    self.leftHandedSwitch = [self addToggleRow:@"Left-Handed Layout" toStack:stack];
-    self.swapJumpSneakSwitch = [self addToggleRow:@"Swap Jump & Sneak" toStack:stack];
-    self.hapticsSwitch = [self addToggleRow:@"Haptic Feedback" toStack:stack];
-    self.gyroSwitch = [self addToggleRow:@"Gyroscope Aiming" toStack:stack];
+    self.leftHandedSwitch = [self addToggleRow:HL(@"Left-Handed Layout", @"Раскладка для левши") toStack:stack];
+    self.swapJumpSneakSwitch = [self addToggleRow:HL(@"Swap Jump & Sneak", @"Поменять прыжок и приседание") toStack:stack];
+    self.hapticsSwitch = [self addToggleRow:HL(@"Haptic Feedback", @"Тактильный отклик") toStack:stack];
+    self.gyroSwitch = [self addToggleRow:HL(@"Gyroscope Aiming", @"Прицеливание гироскопом") toStack:stack];
 
-    self.gyroSlider = [self addSliderRow:@"Gyro Sensitivity" min:0.20 max:3.00 valueLabel:&lbl toStack:stack];
+    self.gyroSlider = [self addSliderRow:HL(@"Gyro Sensitivity", @"Чувствительность гироскопа") min:0.20 max:3.00 valueLabel:&lbl toStack:stack];
     self.gyroValue = lbl;
 
-    self.showLauncherSwitch = [self addToggleRow:@"Show Launcher on Next Start" toStack:stack];
+    self.showLauncherSwitch = [self addToggleRow:HL(@"Show Launcher on Next Start", @"Показывать лаунчер при следующем запуске") toStack:stack];
 
     [self syncUIFromSettings];
 }
