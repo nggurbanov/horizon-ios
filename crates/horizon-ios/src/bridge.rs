@@ -391,3 +391,270 @@ pub unsafe extern "C" fn horizon_ios_poll_feedback(
     }
     true
 }
+
+// ============================================================================
+// Pre-Launcher FFI (servers.dat, options.txt, horizon-player.txt, SLP ping,
+// local worlds scan, resources .zip extraction, address normalization).
+// ============================================================================
+
+fn into_c_string(s: String) -> *mut c_char {
+    let clean = s.replace('\0', "");
+    std::ffi::CString::new(clean)
+        .map(std::ffi::CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+fn write_c_err(err_buf: *mut c_char, err_buf_len: usize, msg: &str) {
+    if err_buf.is_null() || err_buf_len == 0 {
+        return;
+    }
+    let bytes = msg.as_bytes();
+    let mut len = bytes.len().min(err_buf_len - 1);
+    while len > 0 && !msg.is_char_boundary(len) {
+        len -= 1;
+    }
+    // SAFETY: caller provides `err_buf` with capacity `err_buf_len`.
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), err_buf.cast::<u8>(), len);
+        *err_buf.add(len) = 0;
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        // SAFETY: `ptr` was allocated by `CString::into_raw` in this module.
+        let _ = unsafe { std::ffi::CString::from_raw(ptr) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_normalize_server_address(address: *const c_char) -> *mut c_char {
+    if address.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 string.
+    let Ok(raw) = unsafe { CStr::from_ptr(address) }.to_str() else {
+        return std::ptr::null_mut();
+    };
+    match touch_bridge::normalize_server_address(raw) {
+        Some(norm) => into_c_string(norm),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_load_player_name(dir_path: *const c_char) -> *mut c_char {
+    if dir_path.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
+    let Ok(dir) = unsafe { CStr::from_ptr(dir_path) }.to_str() else {
+        return std::ptr::null_mut();
+    };
+    let name = horizon_ios::prelauncher::load_or_create_player_name(std::path::Path::new(dir));
+    into_c_string(name)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_save_player_name(
+    dir_path: *const c_char,
+    name: *const c_char,
+    err_buf: *mut c_char,
+    err_buf_len: usize,
+) -> bool {
+    if dir_path.is_null() || name.is_null() {
+        write_c_err(err_buf, err_buf_len, "Пустое значение");
+        return false;
+    }
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings.
+    let Ok(dir) = unsafe { CStr::from_ptr(dir_path) }.to_str() else {
+        return false;
+    };
+    let Ok(nick) = unsafe { CStr::from_ptr(name) }.to_str() else {
+        return false;
+    };
+    match horizon_ios::prelauncher::save_player_name(std::path::Path::new(dir), nick) {
+        Ok(_) => true,
+        Err(e) => {
+            write_c_err(err_buf, err_buf_len, &e);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_load_servers_json(servers_dat_path: *const c_char) -> *mut c_char {
+    if servers_dat_path.is_null() {
+        return into_c_string("[]".into());
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
+    let Ok(path) = unsafe { CStr::from_ptr(servers_dat_path) }.to_str() else {
+        return into_c_string("[]".into());
+    };
+    let rows = horizon_ios::prelauncher::load_servers(std::path::Path::new(path));
+    into_c_string(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_upsert_server(
+    servers_dat_path: *const c_char,
+    index: i32,
+    name: *const c_char,
+    ip: *const c_char,
+    err_buf: *mut c_char,
+    err_buf_len: usize,
+) -> bool {
+    if servers_dat_path.is_null() || name.is_null() || ip.is_null() {
+        write_c_err(err_buf, err_buf_len, "Некорректные параметры");
+        return false;
+    }
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings.
+    let Ok(path) = unsafe { CStr::from_ptr(servers_dat_path) }.to_str() else {
+        return false;
+    };
+    let Ok(name_s) = unsafe { CStr::from_ptr(name) }.to_str() else {
+        return false;
+    };
+    let Ok(ip_s) = unsafe { CStr::from_ptr(ip) }.to_str() else {
+        return false;
+    };
+    let idx = if index >= 0 { Some(index as usize) } else { None };
+    match horizon_ios::prelauncher::upsert_server(std::path::Path::new(path), idx, name_s, ip_s) {
+        Ok(_) => true,
+        Err(e) => {
+            write_c_err(err_buf, err_buf_len, &e);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_delete_server(
+    servers_dat_path: *const c_char,
+    index: i32,
+    err_buf: *mut c_char,
+    err_buf_len: usize,
+) -> bool {
+    if servers_dat_path.is_null() || index < 0 {
+        write_c_err(err_buf, err_buf_len, "Некорректный индекс сервера");
+        return false;
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
+    let Ok(path) = unsafe { CStr::from_ptr(servers_dat_path) }.to_str() else {
+        return false;
+    };
+    match horizon_ios::prelauncher::delete_server(std::path::Path::new(path), index as usize) {
+        Ok(_) => true,
+        Err(e) => {
+            write_c_err(err_buf, err_buf_len, &e);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_ping_server_json(
+    address: *const c_char,
+    timeout_ms: u32,
+) -> *mut c_char {
+    if address.is_null() {
+        return into_c_string(r#"{"online":false,"latency_ms":0,"players_online":-1,"players_max":-1,"version":"","motd":"","error":"Пустой адрес"}"#.into());
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 string.
+    let Ok(addr) = unsafe { CStr::from_ptr(address) }.to_str() else {
+        return into_c_string(r#"{"online":false,"latency_ms":0,"players_online":-1,"players_max":-1,"version":"","motd":"","error":"UTF-8"}"#.into());
+    };
+    let timeout = std::time::Duration::from_millis(u64::from(timeout_ms.clamp(500, 15_000)));
+    let res = horizon_ios::prelauncher::ping_server(addr, timeout);
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| "{}".into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_load_options_json(options_path: *const c_char) -> *mut c_char {
+    if options_path.is_null() {
+        let def = horizon_ios::prelauncher::PreLauncherOptions::default();
+        return into_c_string(serde_json::to_string(&def).unwrap_or_else(|_| "{}".into()));
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
+    let Ok(path) = unsafe { CStr::from_ptr(options_path) }.to_str() else {
+        let def = horizon_ios::prelauncher::PreLauncherOptions::default();
+        return into_c_string(serde_json::to_string(&def).unwrap_or_else(|_| "{}".into()));
+    };
+    let opts = horizon_ios::prelauncher::load_options(std::path::Path::new(path));
+    into_c_string(serde_json::to_string(&opts).unwrap_or_else(|_| "{}".into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_save_options(
+    options_path: *const c_char,
+    render_distance: i32,
+    max_fps: i32,
+    gui_scale: i32,
+    fov: i32,
+    lang: *const c_char,
+) -> bool {
+    if options_path.is_null() {
+        return false;
+    }
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings.
+    let Ok(path) = unsafe { CStr::from_ptr(options_path) }.to_str() else {
+        return false;
+    };
+    let lang_s = if lang.is_null() {
+        "en_us"
+    } else {
+        unsafe { CStr::from_ptr(lang) }.to_str().unwrap_or("en_us")
+    };
+    let opts = horizon_ios::prelauncher::PreLauncherOptions {
+        render_distance,
+        max_fps,
+        gui_scale,
+        fov,
+        lang: lang_s.to_owned(),
+    };
+    horizon_ios::prelauncher::save_options(std::path::Path::new(path), &opts).is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_list_worlds_json(saves_dir: *const c_char) -> *mut c_char {
+    if saves_dir.is_null() {
+        return into_c_string("[]".into());
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path.
+    let Ok(dir) = unsafe { CStr::from_ptr(saves_dir) }.to_str() else {
+        return into_c_string("[]".into());
+    };
+    let worlds = horizon_ios::prelauncher::scan_local_worlds(std::path::Path::new(dir));
+    into_c_string(serde_json::to_string(&worlds).unwrap_or_else(|_| "[]".into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_extract_resources_zip(
+    zip_path: *const c_char,
+    dest_dir: *const c_char,
+    err_buf: *mut c_char,
+    err_buf_len: usize,
+) -> i32 {
+    if zip_path.is_null() || dest_dir.is_null() {
+        write_c_err(err_buf, err_buf_len, "Некорректный путь к архиву");
+        return -1;
+    }
+    // SAFETY: caller passes valid NUL-terminated UTF-8 paths.
+    let Ok(zip_s) = unsafe { CStr::from_ptr(zip_path) }.to_str() else {
+        return -1;
+    };
+    let Ok(dest_s) = unsafe { CStr::from_ptr(dest_dir) }.to_str() else {
+        return -1;
+    };
+    match horizon_ios::prelauncher::extract_resources_zip(
+        std::path::Path::new(zip_s),
+        std::path::Path::new(dest_s),
+    ) {
+        Ok(count) => count.min(i32::MAX as usize) as i32,
+        Err(e) => {
+            write_c_err(err_buf, err_buf_len, &e);
+            -1
+        }
+    }
+}

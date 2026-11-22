@@ -1,6 +1,6 @@
 //! horizon-ios: the iOS app. Runs the official Horizon game (`horizon-official`) with a native
-//! UIKit Bedrock touch, GameController, and hardware mouse+keyboard overlay (`objc/`).
-//! See HORIZON-IOS.md.
+//! UIKit landscape Pre-Launcher and Bedrock touch, GameController, and hardware mouse+keyboard
+//! overlay (`objc/`). See HORIZON-IOS.md.
 
 #[cfg(target_os = "ios")]
 mod bridge;
@@ -20,15 +20,28 @@ static GAME_IDENTITY: [u8; horizon_game::GAME_IDENTITY.len()] = horizon_game::GA
 const MAIN_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 #[cfg(target_os = "ios")]
+unsafe extern "C" {
+    /// objc/HorizonPreLauncherAppDelegate.m: shows the native UIKit pre-launcher (or invokes
+    /// `launch_cb` immediately when `skipLauncher` is YES and `horizon-resources.json` exists).
+    fn horizon_ios_run_prelauncher_or_launch(launch_cb: extern "C" fn());
+}
+
+#[cfg(target_os = "ios")]
+extern "C" fn launch_game_entry() {
+    horizon_game::prepare_main_stack();
+    std::hint::black_box(&GAME_IDENTITY);
+    horizon_official::register();
+    horizon_game::main();
+}
+
+#[cfg(target_os = "ios")]
 fn main() {
     host::prepare();
-    // UIKit needs the main thread, so the game stays on it, on a larger stack. winit's event
-    // loop never returns on iOS: the app lives inside this call.
+    // UIKit needs the main thread, so both the pre-launcher and the game stay on it, on a larger
+    // stack. Neither UIApplicationMain nor winit's event loop returns on iOS.
     stacker::grow(MAIN_STACK_BYTES, || {
-        horizon_game::prepare_main_stack();
-        std::hint::black_box(&GAME_IDENTITY);
-        horizon_official::register();
-        horizon_game::main();
+        // SAFETY: invoked once on the main thread inside the 64 MiB stack frame.
+        unsafe { horizon_ios_run_prelauncher_or_launch(launch_game_entry) };
     });
 }
 

@@ -276,11 +276,17 @@ impl<T: 'static> EventLoop<T> {
     {
         let application: Option<Retained<UIApplication>> =
             unsafe { msg_send_id![UIApplication::class(), sharedApplication] };
-        assert!(
-            application.is_none(),
-            "\
-                `EventLoop` cannot be `run` after a call to `UIApplicationMain` on iOS\nNote: \
-             `EventLoop::run_app` calls `UIApplicationMain` on iOS",
+
+        // horizon-ios: keep NSNotificationCenter observers alive across the run loop below
+        // when `self` is destructured.
+        let _observers = (
+            self._did_finish_launching_observer,
+            self._did_become_active_observer,
+            self._will_resign_active_observer,
+            self._will_enter_foreground_observer,
+            self._did_enter_background_observer,
+            self._will_terminate_observer,
+            self._did_receive_memory_warning_observer,
         );
 
         let handler = map_user_event(handler, self.receiver);
@@ -295,6 +301,25 @@ impl<T: 'static> EventLoop<T> {
         let handler = EventLoopHandler { handler, event_loop: self.window_target };
 
         app_state::will_launch(self.mtm, handler);
+
+        // horizon-ios: when launched from `HorizonPreLauncherAppDelegate`, `UIApplicationMain` is
+        // already running on the 64 MiB stack. Drive winit's launch/resume lifecycle directly
+        // and keep the main CFRunLoop spinning instead of calling `UIApplicationMain` twice.
+        if let Some(app) = application {
+            app_state::did_finish_launching(self.mtm);
+            // UIApplicationStateActive == 0
+            let state: objc2_foundation::NSInteger =
+                unsafe { objc2::msg_send![&app, applicationState] };
+            if state == 0 {
+                app_state::handle_nonuser_event(
+                    self.mtm,
+                    EventWrapper::StaticEvent(Event::Resumed),
+                );
+            }
+            loop {
+                unsafe { core_foundation::runloop::CFRunLoopRun() };
+            }
+        }
 
         extern "C" {
             // These functions are in crt_externs.h.

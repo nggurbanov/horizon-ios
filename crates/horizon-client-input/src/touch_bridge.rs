@@ -375,6 +375,109 @@ static IOS_GAMEPAD_CONNS: Mutex<VecDeque<IosGamepadConnection>> = Mutex::new(Vec
 static RUMBLE_QUEUE: Mutex<VecDeque<RumbleCommand>> = Mutex::new(VecDeque::new());
 static FEEDBACK_QUEUE: Mutex<VecDeque<Feedback>> = Mutex::new(VecDeque::new());
 static WINDOW_CREATED: Mutex<Option<fn(&winit::window::Window)>> = Mutex::new(None);
+// horizon-ios: per-server auto-login lookup hook registered by the iOS host.
+static AUTO_LOGIN_LOOKUP: Mutex<Option<fn(&str) -> Option<AutoLoginEntry>>> = Mutex::new(None);
+
+/// horizon-ios: rendered auto-login command and post-load delay for a remote server.
+/// `Debug` intentionally redacts `command` so passwords never reach logs.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AutoLoginEntry {
+    pub command: String,
+    pub delay_ms: u64,
+}
+
+impl std::fmt::Debug for AutoLoginEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AutoLoginEntry")
+            .field("command", &"<redacted>")
+            .field("delay_ms", &self.delay_ms)
+            .finish()
+    }
+}
+
+/// horizon-ios: normalizes a Minecraft server address into a canonical lowercase `host:port`
+/// (or `[ipv6]:port`) key for per-server auto-login lookup and Keychain storage.
+/// Trims whitespace, strips a trailing DNS `.` from the host, and defaults omitted port to `25565`.
+pub fn normalize_server_address(addr: &str) -> Option<String> {
+    let text = addr.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Some(rest) = text.strip_prefix('[') {
+        let (host_raw, tail) = rest.rsplit_once(']')?;
+        let host = host_raw.trim().to_ascii_lowercase();
+        let host = host.strip_suffix('.').unwrap_or(&host);
+        if host.is_empty() || !host.contains(':') {
+            return None;
+        }
+        let port: u16 = match tail.strip_prefix(':') {
+            Some("") | None if tail.is_empty() || tail == ":" => 25565,
+            Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) => p.parse().ok()?,
+            _ => return None,
+        };
+        return Some(format!("[{host}]:{port}"));
+    }
+    if let Some((host_raw, port_raw)) = text.rsplit_once(':') {
+        if !host_raw.contains(':') {
+            let host = host_raw.trim().to_ascii_lowercase();
+            let host = host.strip_suffix('.').unwrap_or(&host);
+            if host.is_empty() {
+                return None;
+            }
+            let port: u16 = if port_raw.is_empty() {
+                25565
+            } else if port_raw.bytes().all(|b| b.is_ascii_digit()) {
+                port_raw.parse().ok()?
+            } else {
+                return None;
+            };
+            return Some(format!("{host}:{port}"));
+        }
+        // Bare IPv6 address without brackets (e.g. `::1` or `2001:db8::1`).
+        let host = text.to_ascii_lowercase();
+        return Some(format!("[{host}]:25565"));
+    }
+    let host = text.to_ascii_lowercase();
+    let host = host.strip_suffix('.').unwrap_or(&host);
+    if host.is_empty() {
+        return None;
+    }
+    Some(format!("{host}:25565"))
+}
+
+/// horizon-ios: renders an auto-login command template with the stored password.
+/// Returns `None` if `password` is empty. Empty template defaults to `"/l {password}"`.
+/// Templates without `"{password}"` (e.g. `"/l"` or `"/login"`) receive `" " + password`.
+pub fn render_auto_login_command(template: &str, password: &str) -> Option<String> {
+    if password.is_empty() {
+        return None;
+    }
+    let trimmed = template.trim();
+    let effective = if trimmed.is_empty() {
+        "/l {password}"
+    } else {
+        trimmed
+    };
+    if effective.contains("{password}") {
+        Some(effective.replace("{password}", password))
+    } else {
+        Some(format!("{} {}", effective.trim_end(), password))
+    }
+}
+
+/// horizon-ios: registers the platform callback used by `Game` to resolve per-server auto-login.
+pub fn set_auto_login_lookup(hook: fn(&str) -> Option<AutoLoginEntry>) {
+    if let Ok(mut slot) = AUTO_LOGIN_LOOKUP.lock() {
+        *slot = Some(hook);
+    }
+}
+
+/// horizon-ios: resolves the rendered auto-login command and delay for `address`, if enabled.
+pub fn auto_login_for_server(address: &str) -> Option<AutoLoginEntry> {
+    let normalized = normalize_server_address(address)?;
+    let hook = AUTO_LOGIN_LOOKUP.lock().ok().and_then(|slot| *slot)?;
+    hook(&normalized)
+}
 
 /// Explicit modifier bit masks matching `HORIZON_MOD_*` in `horizon_bridge.h`.
 pub const MOD_SHIFT: u8 = 1 << 0;
@@ -1102,5 +1205,75 @@ mod tests {
         assert_eq!(pop_feedback(), Some(Feedback::BlockBroken));
         assert_eq!(pop_feedback(), Some(Feedback::ItemStackSplit));
         assert_eq!(pop_feedback(), None);
+    }
+
+    #[test]
+    fn auto_login_normalizes_server_addresses() {
+        assert_eq!(
+            normalize_server_address("Play.Example.Com"),
+            Some("play.example.com:25565".into())
+        );
+        assert_eq!(
+            normalize_server_address("  PLAY.EXAMPLE.COM.:25565  "),
+            Some("play.example.com:25565".into())
+        );
+        assert_eq!(
+            normalize_server_address("Play.Example.COM:25566"),
+            Some("play.example.com:25566".into())
+        );
+        assert_eq!(
+            normalize_server_address("example.org:"),
+            Some("example.org:25565".into())
+        );
+        assert_eq!(
+            normalize_server_address("[::1]"),
+            Some("[::1]:25565".into())
+        );
+        assert_eq!(
+            normalize_server_address("[2001:DB8::1]:25570"),
+            Some("[2001:db8::1]:25570".into())
+        );
+        assert_eq!(
+            normalize_server_address("::1"),
+            Some("[::1]:25565".into())
+        );
+        assert_eq!(normalize_server_address(""), None);
+        assert_eq!(normalize_server_address("   "), None);
+        assert_eq!(normalize_server_address(":25565"), None);
+        assert_eq!(normalize_server_address("host:notaport"), None);
+        assert_eq!(normalize_server_address("host:99999"), None);
+    }
+
+    #[test]
+    fn auto_login_renders_command_templates_and_redacts_debug() {
+        assert_eq!(
+            render_auto_login_command("/l {password}", "s3cr3t"),
+            Some("/l s3cr3t".into())
+        );
+        assert_eq!(
+            render_auto_login_command("/login {password} {password}", "pw"),
+            Some("/login pw pw".into())
+        );
+        assert_eq!(
+            render_auto_login_command("/l", "s3cr3t"),
+            Some("/l s3cr3t".into())
+        );
+        assert_eq!(
+            render_auto_login_command("  /login   ", "s3cr3t"),
+            Some("/login s3cr3t".into())
+        );
+        assert_eq!(
+            render_auto_login_command("", "s3cr3t"),
+            Some("/l s3cr3t".into())
+        );
+        assert_eq!(render_auto_login_command("/l {password}", ""), None);
+
+        let entry = AutoLoginEntry {
+            command: "/l super_secret_password".into(),
+            delay_ms: 1000,
+        };
+        let dbg = format!("{entry:?}");
+        assert!(!dbg.contains("super_secret_password"));
+        assert!(dbg.contains("<redacted>"));
     }
 }

@@ -42,6 +42,8 @@ fn main() {
         "CoreHaptics",
         "QuartzCore",
         "CoreGraphics",
+        "Security",
+        "UniformTypeIdentifiers",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }

@@ -18,6 +18,7 @@
 @property (nonatomic, strong) UISwitch *gyroSwitch;
 @property (nonatomic, strong) UISlider *gyroSlider;
 @property (nonatomic, strong) UILabel *gyroValue;
+@property (nonatomic, strong) UISwitch *showLauncherSwitch;
 @end
 
 @implementation HorizonTouchSettingsViewController
@@ -138,6 +139,8 @@
     self.gyroSlider = [self addSliderRow:@"Gyro Sensitivity" min:0.20 max:3.00 valueLabel:&lbl toStack:stack];
     self.gyroValue = lbl;
 
+    self.showLauncherSwitch = [self addToggleRow:@"Show Launcher on Next Start" toStack:stack];
+
     [self syncUIFromSettings];
 }
 
@@ -226,6 +229,7 @@
     self.hapticsSwitch.on = s.hapticsEnabled;
     self.gyroSwitch.on = s.gyroEnabled;
     self.gyroSlider.value = (float)s.gyroSensitivity;
+    self.showLauncherSwitch.on = !s.skipLauncher;
     [self refreshValueLabels];
 }
 
@@ -249,6 +253,7 @@
     s.hapticsEnabled    = self.hapticsSwitch.isOn;
     s.gyroEnabled       = self.gyroSwitch.isOn;
     s.gyroSensitivity   = self.gyroSlider.value;
+    s.skipLauncher      = !self.showLauncherSwitch.isOn;
     [self refreshValueLabels];
     if (self.onSettingsChanged) {
         self.onSettingsChanged();

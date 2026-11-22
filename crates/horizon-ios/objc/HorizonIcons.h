@@ -48,6 +48,28 @@ typedef NS_ENUM(NSInteger, HorizonIconKind) {
     HorizonIconBack,
     HorizonIconQuickMove,
     HorizonIconDrop,
+
+    // Pre-Launcher navigation & action icons
+    HorizonIconHome,
+    HorizonIconServers,
+    HorizonIconGamepad,
+    HorizonIconSliders,
+    HorizonIconFolder,
+    HorizonIconPlay,
+    HorizonIconPlus,
+    HorizonIconRefresh,
+    HorizonIconKey,
+    HorizonIconEye,
+    HorizonIconEyeOff,
+    HorizonIconEdit,
+    HorizonIconTrash,
+    HorizonIconGlobe,
+    HorizonIconShare,
+    HorizonIconDocument,
+    HorizonIconCheck,
+    HorizonIconWarning,
+    HorizonIconChevronRight,
+    HorizonIconHorizonCube,
 };
 
 NS_ASSUME_NONNULL_BEGIN

@@ -13,6 +13,8 @@ static NSString * const kPrefSwapJumpSneak     = @"horizon.touch.swapJumpSneak";
 static NSString * const kPrefHapticsEnabled    = @"horizon.touch.hapticsEnabled";
 static NSString * const kPrefGyroEnabled       = @"horizon.touch.gyroEnabled";
 static NSString * const kPrefGyroSensitivity   = @"horizon.touch.gyroSensitivity";
+static NSString * const kPrefSkipLauncher      = @"horizon.launcher.skipLauncher";
+static NSString * const kPrefLastQuickServer   = @"horizon.launcher.lastQuickServer";
 
 static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -45,6 +47,7 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
             kPrefHapticsEnabled: @YES,
             kPrefGyroEnabled: @NO,
             kPrefGyroSensitivity: @(1.0),
+            kPrefSkipLauncher: @NO,
         }];
         [self loadFromDefaults];
     }
@@ -68,6 +71,8 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     _hapticsEnabled = [d boolForKey:kPrefHapticsEnabled];
     _gyroEnabled = [d boolForKey:kPrefGyroEnabled];
     _gyroSensitivity = clampf_cg([d doubleForKey:kPrefGyroSensitivity], 0.20, 3.00);
+    _skipLauncher = [d boolForKey:kPrefSkipLauncher];
+    _lastQuickServerAddress = [[d stringForKey:kPrefLastQuickServer] copy];
     [self syncToBridge];
 }
 
@@ -126,6 +131,20 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
 - (void)setGyroSensitivity:(CGFloat)gyroSensitivity {
     _gyroSensitivity = clampf_cg(gyroSensitivity, 0.20, 3.00);
     [NSUserDefaults.standardUserDefaults setDouble:_gyroSensitivity forKey:kPrefGyroSensitivity];
+}
+
+- (void)setSkipLauncher:(BOOL)skipLauncher {
+    _skipLauncher = skipLauncher;
+    [NSUserDefaults.standardUserDefaults setBool:skipLauncher forKey:kPrefSkipLauncher];
+}
+
+- (void)setLastQuickServerAddress:(NSString *)lastQuickServerAddress {
+    _lastQuickServerAddress = [lastQuickServerAddress copy];
+    if (_lastQuickServerAddress.length > 0) {
+        [NSUserDefaults.standardUserDefaults setObject:_lastQuickServerAddress forKey:kPrefLastQuickServer];
+    } else {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:kPrefLastQuickServer];
+    }
 }
 
 - (BOOL)isTapToInteract {

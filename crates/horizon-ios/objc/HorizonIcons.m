@@ -640,6 +640,301 @@
             CGContextStrokePath(c);
             break;
         }
+        case HorizonIconHome: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 3.5, 11.2);
+            CGContextAddLineToPoint(c, 12.0, 4.2);
+            CGContextAddLineToPoint(c, 20.5, 11.2);
+            CGContextStrokePath(c);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 5.8, 10.2);
+            CGContextAddLineToPoint(c, 5.8, 19.4);
+            CGContextAddLineToPoint(c, 18.2, 19.4);
+            CGContextAddLineToPoint(c, 18.2, 10.2);
+            CGContextStrokePath(c);
+            CGContextStrokeRectWithWidth(c, CGRectMake(9.8, 13.4, 4.4, 6.0), 1.8);
+            break;
+        }
+        case HorizonIconServers: {
+            CGContextSetLineWidth(c, 1.9);
+            UIBezierPath *topBox = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(3.5, 4.2, 17.0, 6.4) cornerRadius:2.0];
+            UIBezierPath *botBox = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(3.5, 13.4, 17.0, 6.4) cornerRadius:2.0];
+            CGContextAddPath(c, topBox.CGPath);
+            CGContextAddPath(c, botBox.CGPath);
+            CGContextStrokePath(c);
+            CGContextFillEllipseInRect(c, CGRectMake(6.2, 6.3, 2.2, 2.2));
+            CGContextFillEllipseInRect(c, CGRectMake(6.2, 15.5, 2.2, 2.2));
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 11.2, 7.4);
+            CGContextAddLineToPoint(c, 17.6, 7.4);
+            CGContextMoveToPoint(c, 11.2, 16.6);
+            CGContextAddLineToPoint(c, 17.6, 16.6);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconGamepad: {
+            CGContextSetLineWidth(c, 1.9);
+            UIBezierPath *body = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(3.0, 6.6, 18.0, 10.8) cornerRadius:4.8];
+            CGContextAddPath(c, body.CGPath);
+            CGContextStrokePath(c);
+            // Left D-pad cross
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 8.2, 9.6);
+            CGContextAddLineToPoint(c, 8.2, 14.4);
+            CGContextMoveToPoint(c, 5.8, 12.0);
+            CGContextAddLineToPoint(c, 10.6, 12.0);
+            CGContextStrokePath(c);
+            // Right face buttons
+            CGContextFillEllipseInRect(c, CGRectMake(14.3, 10.2, 2.1, 2.1));
+            CGContextFillEllipseInRect(c, CGRectMake(16.7, 12.2, 2.1, 2.1));
+            break;
+        }
+        case HorizonIconSliders: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 4.0, 6.5);
+            CGContextAddLineToPoint(c, 20.0, 6.5);
+            CGContextMoveToPoint(c, 4.0, 12.0);
+            CGContextAddLineToPoint(c, 20.0, 12.0);
+            CGContextMoveToPoint(c, 4.0, 17.5);
+            CGContextAddLineToPoint(c, 20.0, 17.5);
+            CGContextStrokePath(c);
+            CGContextFillEllipseInRect(c, CGRectMake(7.2, 4.4, 4.2, 4.2));
+            CGContextFillEllipseInRect(c, CGRectMake(13.2, 9.9, 4.2, 4.2));
+            CGContextFillEllipseInRect(c, CGRectMake(8.8, 15.4, 4.2, 4.2));
+            break;
+        }
+        case HorizonIconFolder: {
+            CGContextSetLineWidth(c, 1.9);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 3.5, 6.5);
+            CGContextAddLineToPoint(c, 9.2, 6.5);
+            CGContextAddLineToPoint(c, 11.2, 8.8);
+            CGContextAddLineToPoint(c, 20.5, 8.8);
+            CGContextAddLineToPoint(c, 20.5, 18.6);
+            CGContextAddLineToPoint(c, 3.5, 18.6);
+            CGContextClosePath(c);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconPlay: {
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 7.2, 5.0);
+            CGContextAddLineToPoint(c, 19.2, 12.0);
+            CGContextAddLineToPoint(c, 7.2, 19.0);
+            CGContextClosePath(c);
+            CGContextFillPath(c);
+            break;
+        }
+        case HorizonIconPlus: {
+            CGContextSetLineWidth(c, 2.4);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 5.2);
+            CGContextAddLineToPoint(c, 12.0, 18.8);
+            CGContextMoveToPoint(c, 5.2, 12.0);
+            CGContextAddLineToPoint(c, 18.8, 12.0);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconRefresh: {
+            CGContextSetLineWidth(c, 2.1);
+            CGContextAddArc(c, 12.0, 12.0, 6.8, -0.35 * M_PI, 1.35 * M_PI, 0);
+            CGContextStrokePath(c);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 16.5, 4.6);
+            CGContextAddLineToPoint(c, 18.0, 8.8);
+            CGContextAddLineToPoint(c, 13.6, 8.4);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconKey: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextStrokeEllipseInRect(c, CGRectMake(4.0, 7.8, 7.4, 7.4));
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 11.4, 11.5);
+            CGContextAddLineToPoint(c, 20.2, 11.5);
+            CGContextMoveToPoint(c, 17.0, 11.5);
+            CGContextAddLineToPoint(c, 17.0, 15.0);
+            CGContextMoveToPoint(c, 20.0, 11.5);
+            CGContextAddLineToPoint(c, 20.0, 14.6);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconEye: {
+            CGContextSetLineWidth(c, 1.9);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 3.0, 12.0);
+            CGContextAddQuadCurveToPoint(c, 12.0, 4.8, 21.0, 12.0);
+            CGContextAddQuadCurveToPoint(c, 12.0, 19.2, 3.0, 12.0);
+            CGContextStrokePath(c);
+            CGContextFillEllipseInRect(c, CGRectMake(9.7, 9.7, 4.6, 4.6));
+            break;
+        }
+        case HorizonIconEyeOff: {
+            CGContextSetLineWidth(c, 1.9);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 3.0, 12.0);
+            CGContextAddQuadCurveToPoint(c, 12.0, 4.8, 21.0, 12.0);
+            CGContextAddQuadCurveToPoint(c, 12.0, 19.2, 3.0, 12.0);
+            CGContextStrokePath(c);
+            CGContextSetLineWidth(c, 2.1);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 4.8, 19.2);
+            CGContextAddLineToPoint(c, 19.2, 4.8);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconEdit: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 15.2, 4.6);
+            CGContextAddLineToPoint(c, 19.4, 8.8);
+            CGContextAddLineToPoint(c, 8.8, 19.4);
+            CGContextAddLineToPoint(c, 4.6, 19.4);
+            CGContextAddLineToPoint(c, 4.6, 15.2);
+            CGContextClosePath(c);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconTrash: {
+            CGContextSetLineWidth(c, 1.9);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 4.5, 6.8);
+            CGContextAddLineToPoint(c, 19.5, 6.8);
+            CGContextMoveToPoint(c, 9.2, 6.8);
+            CGContextAddLineToPoint(c, 9.2, 4.4);
+            CGContextAddLineToPoint(c, 14.8, 4.4);
+            CGContextAddLineToPoint(c, 14.8, 6.8);
+            CGContextMoveToPoint(c, 6.5, 6.8);
+            CGContextAddLineToPoint(c, 7.4, 19.4);
+            CGContextAddLineToPoint(c, 16.6, 19.4);
+            CGContextAddLineToPoint(c, 17.5, 6.8);
+            CGContextMoveToPoint(c, 10.2, 10.2);
+            CGContextAddLineToPoint(c, 10.2, 16.2);
+            CGContextMoveToPoint(c, 13.8, 10.2);
+            CGContextAddLineToPoint(c, 13.8, 16.2);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconGlobe: {
+            CGContextSetLineWidth(c, 1.8);
+            CGContextStrokeEllipseInRect(c, CGRectMake(3.8, 3.8, 16.4, 16.4));
+            CGContextStrokeEllipseInRect(c, CGRectMake(8.2, 3.8, 7.6, 16.4));
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 4.2, 12.0);
+            CGContextAddLineToPoint(c, 19.8, 12.0);
+            CGContextMoveToPoint(c, 5.6, 7.8);
+            CGContextAddLineToPoint(c, 18.4, 7.8);
+            CGContextMoveToPoint(c, 5.6, 16.2);
+            CGContextAddLineToPoint(c, 18.4, 16.2);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconShare: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 14.5);
+            CGContextAddLineToPoint(c, 12.0, 4.2);
+            CGContextMoveToPoint(c, 8.2, 7.8);
+            CGContextAddLineToPoint(c, 12.0, 4.0);
+            CGContextAddLineToPoint(c, 15.8, 7.8);
+            CGContextMoveToPoint(c, 6.0, 11.2);
+            CGContextAddLineToPoint(c, 5.0, 11.2);
+            CGContextAddLineToPoint(c, 5.0, 19.5);
+            CGContextAddLineToPoint(c, 19.0, 19.5);
+            CGContextAddLineToPoint(c, 19.0, 11.2);
+            CGContextAddLineToPoint(c, 18.0, 11.2);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconDocument: {
+            CGContextSetLineWidth(c, 1.9);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 6.0, 3.6);
+            CGContextAddLineToPoint(c, 14.2, 3.6);
+            CGContextAddLineToPoint(c, 18.4, 7.8);
+            CGContextAddLineToPoint(c, 18.4, 20.4);
+            CGContextAddLineToPoint(c, 6.0, 20.4);
+            CGContextClosePath(c);
+            CGContextStrokePath(c);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 8.8, 11.2);
+            CGContextAddLineToPoint(c, 15.6, 11.2);
+            CGContextMoveToPoint(c, 8.8, 14.6);
+            CGContextAddLineToPoint(c, 15.6, 14.6);
+            CGContextMoveToPoint(c, 8.8, 17.6);
+            CGContextAddLineToPoint(c, 13.0, 17.6);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconCheck: {
+            CGContextSetLineWidth(c, 2.6);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 5.2, 12.4);
+            CGContextAddLineToPoint(c, 9.8, 17.2);
+            CGContextAddLineToPoint(c, 19.0, 7.0);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconWarning: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 4.0);
+            CGContextAddLineToPoint(c, 20.4, 19.2);
+            CGContextAddLineToPoint(c, 3.6, 19.2);
+            CGContextClosePath(c);
+            CGContextStrokePath(c);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 9.4);
+            CGContextAddLineToPoint(c, 12.0, 13.8);
+            CGContextStrokePath(c);
+            CGContextFillEllipseInRect(c, CGRectMake(10.9, 15.6, 2.2, 2.2));
+            break;
+        }
+        case HorizonIconChevronRight: {
+            CGContextSetLineWidth(c, 2.3);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 9.2, 6.4);
+            CGContextAddLineToPoint(c, 15.0, 12.0);
+            CGContextAddLineToPoint(c, 9.2, 17.6);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconHorizonCube: {
+            // Isometric Minecraft/Horizon block mark with shaded faces
+            CGContextSaveGState(c);
+            // Top face (brightest)
+            CGContextSetAlpha(c, 1.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 2.6);
+            CGContextAddLineToPoint(c, 20.4, 7.4);
+            CGContextAddLineToPoint(c, 12.0, 12.2);
+            CGContextAddLineToPoint(c, 3.6, 7.4);
+            CGContextClosePath(c);
+            CGContextFillPath(c);
+            // Left face (medium)
+            CGContextSetAlpha(c, 0.72);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 3.6, 7.4);
+            CGContextAddLineToPoint(c, 12.0, 12.2);
+            CGContextAddLineToPoint(c, 12.0, 21.4);
+            CGContextAddLineToPoint(c, 3.6, 16.6);
+            CGContextClosePath(c);
+            CGContextFillPath(c);
+            // Right face (deepest)
+            CGContextSetAlpha(c, 0.48);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 20.4, 7.4);
+            CGContextAddLineToPoint(c, 12.0, 12.2);
+            CGContextAddLineToPoint(c, 12.0, 21.4);
+            CGContextAddLineToPoint(c, 20.4, 16.6);
+            CGContextClosePath(c);
+            CGContextFillPath(c);
+            CGContextRestoreGState(c);
+            break;
+        }
     }
 }
 

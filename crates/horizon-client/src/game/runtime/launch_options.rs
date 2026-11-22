@@ -378,6 +378,32 @@ impl Options {
                 }
             }
         }
+        // horizon-ios: pre-launcher 1-tap server and local world quick-launch env vars.
+        #[cfg(target_os = "ios")]
+        {
+            if o.server.is_none()
+                && let Ok(server) = std::env::var("HORIZON_IOS_QUICK_SERVER")
+            {
+                let server = server.trim();
+                if !server.is_empty() {
+                    o.server = Some(server.to_owned());
+                }
+            }
+            if o.quick_play.is_none()
+                && let Ok(world) = std::env::var("HORIZON_IOS_QUICK_WORLD")
+            {
+                let world = world.trim();
+                if !world.is_empty() {
+                    let mut parts = std::path::Path::new(world).components();
+                    if matches!(
+                        (parts.next(), parts.next()),
+                        (Some(std::path::Component::Normal(_)), None)
+                    ) {
+                        o.quick_play = Some(world.to_owned());
+                    }
+                }
+            }
+        }
         if o.benchmark_set.is_some() && o.benchmark.as_deref() != Some("travel") {
             return Err("--benchmark-set needs --benchmark travel".into());
         }

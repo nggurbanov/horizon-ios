@@ -2161,6 +2161,7 @@ void horizon_ios_attach_overlay(void *ui_view) {
             sCurrentOverlay = overlay;
         }
         [overlay attachToGameView:gameView];
+        horizon_ios_dismiss_prelauncher_window();
     };
 
     if (NSThread.isMainThread) {

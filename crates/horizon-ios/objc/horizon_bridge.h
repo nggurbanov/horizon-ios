@@ -242,6 +242,34 @@ void horizon_ios_start_watchdog(void);
 // Overlay entry point (called from Rust host.rs)
 void horizon_ios_attach_overlay(void *ui_view);
 
+// Pre-Launcher lifecycle (HorizonPreLauncherAppDelegate.m)
+void horizon_ios_run_prelauncher_or_launch(void (*launch_cb)(void));
+void horizon_ios_dismiss_prelauncher_window(void);
+
+// Auto-Login lookup (HorizonAutoLoginStore.m, called from Rust host.rs)
+bool horizon_ios_lookup_autologin_parts(
+    const char *normalized_addr,
+    char *tmpl_buf,
+    size_t tmpl_buf_len,
+    char *pass_buf,
+    size_t pass_buf_len,
+    uint64_t *out_delay_ms
+);
+
+// Pre-Launcher Rust FFI (bridge.rs -> prelauncher.rs)
+void horizon_ios_free_string(char *ptr);
+char *horizon_ios_normalize_server_address(const char *address);
+char *horizon_ios_load_player_name(const char *dir_path);
+bool horizon_ios_save_player_name(const char *dir_path, const char *name, char *err_buf, size_t err_buf_len);
+char *horizon_ios_load_servers_json(const char *servers_dat_path);
+bool horizon_ios_upsert_server(const char *servers_dat_path, int32_t index, const char *name, const char *ip, char *err_buf, size_t err_buf_len);
+bool horizon_ios_delete_server(const char *servers_dat_path, int32_t index, char *err_buf, size_t err_buf_len);
+char *horizon_ios_ping_server_json(const char *address, uint32_t timeout_ms);
+char *horizon_ios_load_options_json(const char *options_path);
+bool horizon_ios_save_options(const char *options_path, int32_t render_distance, int32_t max_fps, int32_t gui_scale, int32_t fov, const char *lang);
+char *horizon_ios_list_worlds_json(const char *saves_dir);
+int32_t horizon_ios_extract_resources_zip(const char *zip_path, const char *dest_dir, char *err_buf, size_t err_buf_len);
+
 #ifdef __cplusplus
 }
 #endif

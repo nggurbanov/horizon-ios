@@ -574,6 +574,9 @@ pub(super) struct Remote {
     /// the first teleport, which takes them then.
     abilities: Option<play::PlayerAbilities>,
     loaded_sent: bool,
+    // horizon-ios: per-server auto-login arming timestamp and one-shot guard.
+    auto_login_ready_at: Option<Instant>,
+    auto_login_sent: bool,
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
@@ -995,7 +998,8 @@ impl Game<'_> {
             },
             |a| (a.name.clone(), a.uuid),
         );
-        self.server_packs_connect(local.is_none().then_some(address), user);
+        let is_local = local.is_some();
+        self.server_packs_connect((!is_local).then_some(address), user);
         let session = match local {
             Some(pipe) => Session::connect_local(
                 pipe,
@@ -1175,6 +1179,9 @@ impl Game<'_> {
             last_recorded_pose: None,
             abilities: None,
             loaded_sent: false,
+            // horizon-ios: integrated singleplayer never runs remote auto-login.
+            auto_login_ready_at: None,
+            auto_login_sent: is_local,
             heard_level: None,
             level_load: horizon_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
@@ -1417,6 +1424,9 @@ impl Game<'_> {
             carried: std::cell::Cell::new(None),
             abilities: None,
             loaded_sent: false,
+            // horizon-ios: studio replays never run remote auto-login.
+            auto_login_ready_at: None,
+            auto_login_sent: true,
             heard_level: None,
             level_load: horizon_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
@@ -6170,12 +6180,54 @@ impl Game<'_> {
             r.session.send_far_terrain();
         }
         self.tick_chat_session();
+        // horizon-ios: dispatch per-server auto-login once after world load settles.
+        self.tick_ios_auto_login();
         // Minecraft.tick sends this even when the player cannot tick yet,
         // including while waiting for chunks. Keep it outside early returns.
         if self.remote.as_ref().is_some_and(Remote::has_level) {
             self.send(S::ClientTickEnd(Empty));
         }
         Ok(())
+    }
+
+    // horizon-ios: per-server auto-login execution once the remote world is playable.
+    // Never logs passwords or commands and never adds the command to chat history.
+    fn tick_ios_auto_login(&mut self) {
+        if self.screen != Screen::Playing {
+            return;
+        }
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        if r.auto_login_sent || !r.logged_in || !r.loaded_sent {
+            return;
+        }
+        let now = Instant::now();
+        if let Some(ready_at) = r.auto_login_ready_at {
+            if now < ready_at {
+                return;
+            }
+            r.auto_login_sent = true;
+            let addr = r.session.address.clone();
+            if let Some(entry) = horizon_client_input::touch_bridge::auto_login_for_server(&addr) {
+                let text = entry.command.trim();
+                if let Some(cmd) = text.strip_prefix('/') {
+                    if !cmd.is_empty() {
+                        self.send_command(cmd);
+                    }
+                } else if !text.is_empty() {
+                    self.send_signed_chat(text);
+                }
+            }
+        } else {
+            let addr = r.session.address.clone();
+            if let Some(entry) = horizon_client_input::touch_bridge::auto_login_for_server(&addr) {
+                r.auto_login_ready_at =
+                    Some(now + std::time::Duration::from_millis(entry.delay_ms));
+            } else {
+                r.auto_login_sent = true;
+            }
+        }
     }
 
     fn tick_remote_player(&mut self, running: bool, hold: bool) -> Result<()> {

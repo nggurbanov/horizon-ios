@@ -2210,11 +2210,17 @@ name = "horizon-ios"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "flate2",
  "horizon-client-input",
+ "horizon-core",
  "horizon-game",
  "horizon-official",
+ "horizon-protocol",
+ "serde",
+ "serde_json",
  "stacker",
  "winit",
+ "zip",
 ]
 
 [[package]]

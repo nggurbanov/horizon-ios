@@ -27,6 +27,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL hapticsEnabled;       // default YES
 @property (nonatomic, assign) BOOL gyroEnabled;          // default NO
 @property (nonatomic, assign) CGFloat gyroSensitivity;   // 0.20 .. 3.00 (default 1.0)
+@property (nonatomic, assign) BOOL skipLauncher;         // default NO
+@property (nonatomic, copy, nullable) NSString *lastQuickServerAddress;
 
 - (BOOL)isTapToInteract;
 - (void)resetToDefaults;
