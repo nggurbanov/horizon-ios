@@ -5,6 +5,7 @@
 #import "HorizonAutoLoginStore.h"
 #import "HorizonIcons.h"
 #import "HorizonLogViewerViewController.h"
+#import "HorizonOTAUpdater.h"
 #import "HorizonPreLauncherAppDelegate.h"
 #import "HorizonServerEditorViewController.h"
 #import "HorizonSettings.h"
@@ -257,6 +258,10 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 @property (nonatomic, strong) UIStackView *filesStack;
 
 // Tab 1 (Home) dynamic controls
+@property (nonatomic, strong) UIView *homeUpdateBanner;
+@property (nonatomic, strong) UILabel *homeUpdateTitleLabel;
+@property (nonatomic, strong) UILabel *homeUpdateSubLabel;
+@property (nonatomic, strong) UIButton *homeUpdateButton;
 @property (nonatomic, strong) UITextField *nickField;
 @property (nonatomic, strong) UILabel *nickErrorLabel;
 @property (nonatomic, strong) UILabel *homeAvatarLabel;
@@ -336,6 +341,11 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [nc addObserver:self selector:@selector(refreshInputStatusUI) name:GCMouseDidDisconnectNotification object:nil];
     [nc addObserver:self selector:@selector(onKeyboardChange:) name:UIKeyboardWillChangeFrameNotification object:nil];
     [nc addObserver:self selector:@selector(onKeyboardHide:) name:UIKeyboardWillHideNotification object:nil];
+    [nc addObserver:self selector:@selector(onOTAStateChanged) name:HorizonOTAStateDidChangeNotification object:nil];
+
+    if (HorizonSettings.shared.autoCheckUpdates) {
+        [HorizonOTAUpdater.shared checkForUpdatesForce:NO];
+    }
 }
 
 - (void)dealloc {
@@ -1010,6 +1020,78 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
 - (void)buildHomeTab {
     [self.homeStack addArrangedSubview:[self pageHeaderLabel:@"Главная"]];
+
+    // OTA Update Banner (hidden when already up to date — zero clutter normally)
+    UIView *updCard = [[UIView alloc] init];
+    updCard.backgroundColor = pl_rgb(51, 189, 102, 0.14);
+    updCard.layer.cornerRadius = 12.0;
+    updCard.layer.borderWidth = 1.0;
+    updCard.layer.borderColor = pl_rgb(51, 189, 102, 0.38).CGColor;
+    updCard.hidden = YES;
+
+    UIView *updIconBadge = [[UIView alloc] init];
+    updIconBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    updIconBadge.backgroundColor = pl_rgb(51, 189, 102, 0.22);
+    updIconBadge.layer.cornerRadius = 18.0;
+    [updCard addSubview:updIconBadge];
+
+    UIImageView *updIv = [[UIImageView alloc] initWithImage:[HorizonIcons iconForKind:HorizonIconDownload pointSize:18.0]];
+    updIv.translatesAutoresizingMaskIntoConstraints = NO;
+    updIv.tintColor = pl_emerald();
+    [updIconBadge addSubview:updIv];
+
+    self.homeUpdateTitleLabel = [[UILabel alloc] init];
+    self.homeUpdateTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.homeUpdateTitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightBold];
+    self.homeUpdateTitleLabel.textColor = pl_textPrimary();
+    self.homeUpdateTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [updCard addSubview:self.homeUpdateTitleLabel];
+
+    self.homeUpdateSubLabel = [[UILabel alloc] init];
+    self.homeUpdateSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.homeUpdateSubLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
+    self.homeUpdateSubLabel.textColor = pl_rgb(174, 232, 194, 1.0);
+    self.homeUpdateSubLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [updCard addSubview:self.homeUpdateSubLabel];
+
+    self.homeUpdateButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.homeUpdateButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.homeUpdateButton setTitle:@"Обновить" forState:UIControlStateNormal];
+    [self.homeUpdateButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    self.homeUpdateButton.backgroundColor = pl_emerald();
+    self.homeUpdateButton.layer.cornerRadius = 8.0;
+    self.homeUpdateButton.titleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightBold];
+    self.homeUpdateButton.contentEdgeInsets = UIEdgeInsetsMake(7.0, 14.0, 7.0, 14.0);
+    [self.homeUpdateButton addTarget:self action:@selector(onOTAInstallTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [updCard addSubview:self.homeUpdateButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [updIconBadge.leadingAnchor constraintEqualToAnchor:updCard.leadingAnchor constant:13.0],
+        [updIconBadge.centerYAnchor constraintEqualToAnchor:updCard.centerYAnchor],
+        [updIconBadge.widthAnchor constraintEqualToConstant:36.0],
+        [updIconBadge.heightAnchor constraintEqualToConstant:36.0],
+
+        [updIv.centerXAnchor constraintEqualToAnchor:updIconBadge.centerXAnchor],
+        [updIv.centerYAnchor constraintEqualToAnchor:updIconBadge.centerYAnchor],
+        [updIv.widthAnchor constraintEqualToConstant:18.0],
+        [updIv.heightAnchor constraintEqualToConstant:18.0],
+
+        [self.homeUpdateTitleLabel.topAnchor constraintEqualToAnchor:updCard.topAnchor constant:10.0],
+        [self.homeUpdateTitleLabel.leadingAnchor constraintEqualToAnchor:updIconBadge.trailingAnchor constant:11.0],
+        [self.homeUpdateTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.homeUpdateButton.leadingAnchor constant:-10.0],
+
+        [self.homeUpdateSubLabel.topAnchor constraintEqualToAnchor:self.homeUpdateTitleLabel.bottomAnchor constant:2.0],
+        [self.homeUpdateSubLabel.leadingAnchor constraintEqualToAnchor:self.homeUpdateTitleLabel.leadingAnchor],
+        [self.homeUpdateSubLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.homeUpdateButton.leadingAnchor constant:-10.0],
+        [self.homeUpdateSubLabel.bottomAnchor constraintEqualToAnchor:updCard.bottomAnchor constant:-10.0],
+
+        [self.homeUpdateButton.trailingAnchor constraintEqualToAnchor:updCard.trailingAnchor constant:-12.0],
+        [self.homeUpdateButton.centerYAnchor constraintEqualToAnchor:updCard.centerYAnchor],
+        [self.homeUpdateButton.heightAnchor constraintEqualToConstant:32.0],
+    ]];
+    [self.homeUpdateButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    self.homeUpdateBanner = updCard;
+    [self.homeStack addArrangedSubview:updCard];
 
     // Profile card
     UIView *profileCard = [self insetCard];
@@ -1969,6 +2051,9 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     ]];
     [self.filesStack addArrangedSubview:resCard];
 
+    // 1b. OTA Updates (Feather / SideStore / AltStore / Safari)
+    [self appendOTASectionToFilesStack];
+
     // 2. Resource Packs & Shader Packs
     [self.filesStack addArrangedSubview:[self sectionCaption:@"ПАКЕТЫ РЕСУРСОВ И ШЕЙДЕРЫ"]];
     NSUInteger rpCount = [self countItemsInDirectory:self.resourcePacksDir];
@@ -2161,6 +2246,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 
 - (void)refreshAllUI {
     [self updateProfileUI];
+    [self updateHomeUpdateBanner];
     [self refreshInputStatusUI];
     [self syncControlsUIFromSettings];
     [self syncGraphicsUIFromOptions];
@@ -2266,7 +2352,15 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         srvBtn.badgeLabel.hidden = YES;
     }
     HorizonRailTabButton *filesBtn = self.tabButtons[HorizonLauncherTabFiles];
-    filesBtn.warningDot.hidden = self.resourcesReady;
+    if (!self.resourcesReady) {
+        filesBtn.warningDot.backgroundColor = pl_amber();
+        filesBtn.warningDot.hidden = NO;
+    } else if (HorizonOTAUpdater.shared.isUpdateAvailable) {
+        filesBtn.warningDot.backgroundColor = pl_emerald();
+        filesBtn.warningDot.hidden = NO;
+    } else {
+        filesBtn.warningDot.hidden = YES;
+    }
 }
 
 #pragma mark - Navigation & Keyboard
@@ -2635,6 +2729,409 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         avc.popoverPresentationController.sourceRect = sender.bounds;
     }
     [self presentViewController:avc animated:YES completion:nil];
+}
+
+#pragma mark - OTA Updates (Feather / SideStore / AltStore / Safari)
+
+static NSString *pl_firstLineSummary(NSString * _Nullable text) {
+    if (text.length == 0) return @"";
+    NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSRange nl = [trimmed rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet];
+    if (nl.location != NSNotFound) {
+        trimmed = [[trimmed substringToIndex:nl.location]
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    }
+    return trimmed;
+}
+
+- (void)updateHomeUpdateBanner {
+    HorizonOTAUpdater *ota = HorizonOTAUpdater.shared;
+    if (!ota.isUpdateAvailable || ota.latestRelease == nil) {
+        self.homeUpdateBanner.hidden = YES;
+        return;
+    }
+    HorizonOTARelease *rel = ota.latestRelease;
+    self.homeUpdateTitleLabel.text = [NSString stringWithFormat:@"Доступно обновление %@", rel.version];
+    NSString *notes = pl_firstLineSummary(rel.releaseNotes);
+    if (notes.length > 0) {
+        self.homeUpdateSubLabel.text = notes;
+    } else if (rel.sizeBytes > 0) {
+        self.homeUpdateSubLabel.text = [NSString stringWithFormat:@"Новая сборка готова к установке · %@", pl_formatBytes(rel.sizeBytes)];
+    } else {
+        self.homeUpdateSubLabel.text = @"Новая сборка готова к установке через Feather / SideStore / AltStore";
+    }
+    self.homeUpdateBanner.hidden = NO;
+}
+
+- (void)appendOTASectionToFilesStack {
+    HorizonOTAUpdater *ota = HorizonOTAUpdater.shared;
+    HorizonSettings *settings = HorizonSettings.shared;
+
+    [self.filesStack addArrangedSubview:[self sectionCaption:@"ОБНОВЛЕНИЯ (OTA)"]];
+
+    // Row 1: Current version, live status, Check / Update action
+    UIView *statusCard = [self insetCard];
+    HorizonIconKind iconKind = HorizonIconDownload;
+    UIColor *iconColor = pl_textSec();
+    NSString *statusLine = @"Проверка не выполнялась";
+    UIColor *statusColor = pl_textMuted();
+
+    switch (ota.status) {
+        case HorizonOTAStatusChecking:
+            iconKind = HorizonIconRefresh;
+            iconColor = pl_emerald();
+            statusLine = @"Проверка…";
+            statusColor = pl_textSec();
+            break;
+        case HorizonOTAStatusUpToDate:
+            iconKind = HorizonIconCheck;
+            iconColor = pl_emerald();
+            statusLine = @"Последняя версия";
+            statusColor = pl_emerald();
+            break;
+        case HorizonOTAStatusUpdateAvailable: {
+            iconKind = HorizonIconDownload;
+            iconColor = pl_emerald();
+            HorizonOTARelease *rel = ota.latestRelease;
+            NSString *sz = (rel.sizeBytes > 0)
+                ? [NSString stringWithFormat:@" · %@", pl_formatBytes(rel.sizeBytes)]
+                : @"";
+            NSString *note = pl_firstLineSummary(rel.releaseNotes);
+            if (note.length > 0) {
+                statusLine = [NSString stringWithFormat:@"Доступна %@%@ — %@", rel.version ?: @"", sz, note];
+            } else {
+                statusLine = [NSString stringWithFormat:@"Доступна %@%@", rel.version ?: @"", sz];
+            }
+            statusColor = pl_rgb(122, 238, 164, 1.0);
+            break;
+        }
+        case HorizonOTAStatusError:
+            iconKind = HorizonIconWarning;
+            iconColor = pl_amber();
+            statusLine = ota.lastErrorMessage.length > 0 ? ota.lastErrorMessage : @"Не удалось проверить обновления";
+            statusColor = pl_amber();
+            break;
+        case HorizonOTAStatusIdle:
+        default:
+            break;
+    }
+
+    UIImageView *stIcon = [[UIImageView alloc] initWithImage:[HorizonIcons iconForKind:iconKind pointSize:18.0]];
+    stIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    stIcon.tintColor = iconColor;
+    [statusCard addSubview:stIcon];
+
+    NSString *curVer = ota.currentVersion;
+    NSString *curBuild = ota.currentBuildVersion;
+    UILabel *verTitle = [[UILabel alloc] init];
+    verTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    verTitle.text = (curBuild.length > 0)
+        ? [NSString stringWithFormat:@"%@ · build %@", curVer, curBuild]
+        : curVer;
+    verTitle.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightSemibold];
+    verTitle.textColor = pl_textPrimary();
+    [statusCard addSubview:verTitle];
+
+    UILabel *stSub = [[UILabel alloc] init];
+    stSub.translatesAutoresizingMaskIntoConstraints = NO;
+    stSub.text = statusLine;
+    stSub.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
+    stSub.textColor = statusColor;
+    stSub.numberOfLines = 2;
+    [statusCard addSubview:stSub];
+
+    UIButton *primaryBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    primaryBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    primaryBtn.layer.cornerRadius = 8.0;
+    primaryBtn.titleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
+    primaryBtn.contentEdgeInsets = UIEdgeInsetsMake(7.0, 14.0, 7.0, 14.0);
+    [primaryBtn setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [statusCard addSubview:primaryBtn];
+
+    UIView *rightAnchor = primaryBtn;
+    if (ota.isUpdateAvailable) {
+        [primaryBtn setTitle:@"Обновить" forState:UIControlStateNormal];
+        [primaryBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        primaryBtn.backgroundColor = pl_emerald();
+        [primaryBtn addTarget:self action:@selector(onOTAInstallTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+        UIButton *recheckBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        recheckBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        [recheckBtn setImage:[HorizonIcons iconForKind:HorizonIconRefresh pointSize:14.0] forState:UIControlStateNormal];
+        recheckBtn.tintColor = pl_textSec();
+        recheckBtn.backgroundColor = pl_elevatedBg();
+        recheckBtn.layer.cornerRadius = 8.0;
+        [recheckBtn addTarget:self action:@selector(onOTACheckTapped) forControlEvents:UIControlEventTouchUpInside];
+        [statusCard addSubview:recheckBtn];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [recheckBtn.trailingAnchor constraintEqualToAnchor:primaryBtn.leadingAnchor constant:-8.0],
+            [recheckBtn.centerYAnchor constraintEqualToAnchor:statusCard.centerYAnchor],
+            [recheckBtn.widthAnchor constraintEqualToConstant:32.0],
+            [recheckBtn.heightAnchor constraintEqualToConstant:32.0],
+        ]];
+        rightAnchor = recheckBtn;
+    } else if (ota.status == HorizonOTAStatusChecking) {
+        [primaryBtn setTitle:@"Проверка…" forState:UIControlStateNormal];
+        [primaryBtn setTitleColor:pl_textSec() forState:UIControlStateNormal];
+        primaryBtn.backgroundColor = pl_elevatedBg();
+        primaryBtn.enabled = NO;
+        primaryBtn.alpha = 0.7;
+    } else {
+        [primaryBtn setTitle:@"Проверить" forState:UIControlStateNormal];
+        [primaryBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
+        primaryBtn.backgroundColor = pl_elevatedBg();
+        [primaryBtn addTarget:self action:@selector(onOTACheckTapped) forControlEvents:UIControlEventTouchUpInside];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stIcon.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:14.0],
+        [stIcon.centerYAnchor constraintEqualToAnchor:statusCard.centerYAnchor],
+        [stIcon.widthAnchor constraintEqualToConstant:18.0],
+        [stIcon.heightAnchor constraintEqualToConstant:18.0],
+
+        [verTitle.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:11.0],
+        [verTitle.leadingAnchor constraintEqualToAnchor:stIcon.trailingAnchor constant:11.0],
+        [verTitle.trailingAnchor constraintLessThanOrEqualToAnchor:rightAnchor.leadingAnchor constant:-10.0],
+
+        [stSub.topAnchor constraintEqualToAnchor:verTitle.bottomAnchor constant:2.0],
+        [stSub.leadingAnchor constraintEqualToAnchor:verTitle.leadingAnchor],
+        [stSub.trailingAnchor constraintLessThanOrEqualToAnchor:rightAnchor.leadingAnchor constant:-10.0],
+        [stSub.bottomAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:-11.0],
+
+        [primaryBtn.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-12.0],
+        [primaryBtn.centerYAnchor constraintEqualToAnchor:statusCard.centerYAnchor],
+    ]];
+    [self.filesStack addArrangedSubview:statusCard];
+
+    // Row 2: Preferred Installer segmented control
+    UIView *instCard = [self insetCard];
+    UILabel *instLbl = [[UILabel alloc] init];
+    instLbl.translatesAutoresizingMaskIntoConstraints = NO;
+    instLbl.text = @"Установщик";
+    instLbl.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightMedium];
+    instLbl.textColor = pl_textPrimary();
+    [instCard addSubview:instLbl];
+
+    UISegmentedControl *instSeg = [self styledSegmentedControlWithItems:@[@"Авто", @"Feather", @"SideStore", @"AltStore", @"Safari"]
+                                                                 action:@selector(onOTAInstallerChanged:)];
+    instSeg.translatesAutoresizingMaskIntoConstraints = NO;
+    instSeg.backgroundColor = pl_elevatedBg();
+    instSeg.selectedSegmentIndex = MAX(0, MIN(4, (NSInteger)settings.otaInstaller));
+    [instCard addSubview:instSeg];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [instLbl.topAnchor constraintEqualToAnchor:instCard.topAnchor constant:10.0],
+        [instLbl.leadingAnchor constraintEqualToAnchor:instCard.leadingAnchor constant:14.0],
+        [instLbl.trailingAnchor constraintEqualToAnchor:instCard.trailingAnchor constant:-14.0],
+
+        [instSeg.topAnchor constraintEqualToAnchor:instLbl.bottomAnchor constant:8.0],
+        [instSeg.leadingAnchor constraintEqualToAnchor:instCard.leadingAnchor constant:14.0],
+        [instSeg.trailingAnchor constraintEqualToAnchor:instCard.trailingAnchor constant:-14.0],
+        [instSeg.bottomAnchor constraintEqualToAnchor:instCard.bottomAnchor constant:-11.0],
+    ]];
+    [self.filesStack addArrangedSubview:instCard];
+
+    // Row 3: OTA Repository 1-tap source links (+ Feather, + SideStore, Copy)
+    UIView *repoCard = [self insetCard];
+    UILabel *repoTitle = [[UILabel alloc] init];
+    repoTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    repoTitle.text = @"Репозиторий OTA";
+    repoTitle.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
+    repoTitle.textColor = pl_textPrimary();
+    [repoCard addSubview:repoTitle];
+
+    UILabel *repoSub = [[UILabel alloc] init];
+    repoSub.translatesAutoresizingMaskIntoConstraints = NO;
+    repoSub.text = @"Добавить source.json для автоматических обновлений";
+    repoSub.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
+    repoSub.textColor = pl_textSec();
+    repoSub.lineBreakMode = NSLineBreakByTruncatingTail;
+    [repoCard addSubview:repoSub];
+
+    UIButton *featherBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [featherBtn setTitle:@"+ Feather" forState:UIControlStateNormal];
+    [featherBtn setTitleColor:pl_emerald() forState:UIControlStateNormal];
+    featherBtn.backgroundColor = pl_emeraldSoft();
+    featherBtn.layer.cornerRadius = 8.0;
+    featherBtn.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    featherBtn.contentEdgeInsets = UIEdgeInsetsMake(6.0, 10.0, 6.0, 10.0);
+    [featherBtn addTarget:self action:@selector(onOTAAddFeatherRepoTapped) forControlEvents:UIControlEventTouchUpInside];
+
+    UIButton *sideStoreBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [sideStoreBtn setTitle:@"+ SideStore" forState:UIControlStateNormal];
+    [sideStoreBtn setTitleColor:pl_emerald() forState:UIControlStateNormal];
+    sideStoreBtn.backgroundColor = pl_emeraldSoft();
+    sideStoreBtn.layer.cornerRadius = 8.0;
+    sideStoreBtn.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    sideStoreBtn.contentEdgeInsets = UIEdgeInsetsMake(6.0, 10.0, 6.0, 10.0);
+    [sideStoreBtn addTarget:self action:@selector(onOTAAddSideStoreRepoTapped) forControlEvents:UIControlEventTouchUpInside];
+
+    UIButton *copyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [copyBtn setTitle:@"Копировать" forState:UIControlStateNormal];
+    [copyBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
+    copyBtn.backgroundColor = pl_elevatedBg();
+    copyBtn.layer.cornerRadius = 8.0;
+    copyBtn.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    copyBtn.contentEdgeInsets = UIEdgeInsetsMake(6.0, 10.0, 6.0, 10.0);
+    [copyBtn addTarget:self action:@selector(onOTACopySourceURLTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+    UIStackView *repoBtns = [[UIStackView alloc] initWithArrangedSubviews:@[featherBtn, sideStoreBtn, copyBtn]];
+    repoBtns.translatesAutoresizingMaskIntoConstraints = NO;
+    repoBtns.axis = UILayoutConstraintAxisHorizontal;
+    repoBtns.spacing = 6.0;
+    [repoBtns setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [repoCard addSubview:repoBtns];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [repoTitle.topAnchor constraintEqualToAnchor:repoCard.topAnchor constant:10.0],
+        [repoTitle.leadingAnchor constraintEqualToAnchor:repoCard.leadingAnchor constant:14.0],
+        [repoTitle.trailingAnchor constraintLessThanOrEqualToAnchor:repoBtns.leadingAnchor constant:-10.0],
+
+        [repoSub.topAnchor constraintEqualToAnchor:repoTitle.bottomAnchor constant:2.0],
+        [repoSub.leadingAnchor constraintEqualToAnchor:repoTitle.leadingAnchor],
+        [repoSub.trailingAnchor constraintLessThanOrEqualToAnchor:repoBtns.leadingAnchor constant:-10.0],
+        [repoSub.bottomAnchor constraintEqualToAnchor:repoCard.bottomAnchor constant:-10.0],
+
+        [repoBtns.trailingAnchor constraintEqualToAnchor:repoCard.trailingAnchor constant:-12.0],
+        [repoBtns.centerYAnchor constraintEqualToAnchor:repoCard.centerYAnchor],
+    ]];
+    [self.filesStack addArrangedSubview:repoCard];
+
+    // Row 4: Auto-check switch
+    UISwitch *autoCheckSw = [self makeToggleRow:@"Автопроверка при запуске"
+                                       subtitle:@"Проверять наличие новой сборки при открытии лаунчера"
+                                         action:@selector(onOTAAutoCheckChanged:)
+                                        inStack:self.filesStack];
+    autoCheckSw.on = settings.autoCheckUpdates;
+
+    // Row 5: Compact customizable source.json URL
+    UIView *urlCard = [self insetCard];
+    UILabel *urlTitle = [[UILabel alloc] init];
+    urlTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    urlTitle.text = @"Источник source.json";
+    urlTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
+    urlTitle.textColor = pl_textSec();
+    [urlCard addSubview:urlTitle];
+
+    UILabel *urlVal = [[UILabel alloc] init];
+    urlVal.translatesAutoresizingMaskIntoConstraints = NO;
+    urlVal.text = settings.otaSourceURL;
+    urlVal.font = [UIFont monospacedSystemFontOfSize:11.0 weight:UIFontWeightRegular];
+    urlVal.textColor = pl_textMuted();
+    urlVal.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    [urlCard addSubview:urlVal];
+
+    UIButton *editUrlBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    editUrlBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [editUrlBtn setTitle:@"Изменить" forState:UIControlStateNormal];
+    [editUrlBtn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
+    editUrlBtn.backgroundColor = pl_elevatedBg();
+    editUrlBtn.layer.cornerRadius = 8.0;
+    editUrlBtn.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    editUrlBtn.contentEdgeInsets = UIEdgeInsetsMake(6.0, 10.0, 6.0, 10.0);
+    [editUrlBtn setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [editUrlBtn addTarget:self action:@selector(onOTAEditSourceURLTapped) forControlEvents:UIControlEventTouchUpInside];
+    [urlCard addSubview:editUrlBtn];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [urlTitle.topAnchor constraintEqualToAnchor:urlCard.topAnchor constant:9.0],
+        [urlTitle.leadingAnchor constraintEqualToAnchor:urlCard.leadingAnchor constant:14.0],
+        [urlTitle.trailingAnchor constraintLessThanOrEqualToAnchor:editUrlBtn.leadingAnchor constant:-10.0],
+
+        [urlVal.topAnchor constraintEqualToAnchor:urlTitle.bottomAnchor constant:2.0],
+        [urlVal.leadingAnchor constraintEqualToAnchor:urlTitle.leadingAnchor],
+        [urlVal.trailingAnchor constraintLessThanOrEqualToAnchor:editUrlBtn.leadingAnchor constant:-10.0],
+        [urlVal.bottomAnchor constraintEqualToAnchor:urlCard.bottomAnchor constant:-9.0],
+
+        [editUrlBtn.trailingAnchor constraintEqualToAnchor:urlCard.trailingAnchor constant:-12.0],
+        [editUrlBtn.centerYAnchor constraintEqualToAnchor:urlCard.centerYAnchor],
+    ]];
+    [self.filesStack addArrangedSubview:urlCard];
+}
+
+- (void)onOTAStateChanged {
+    [self updateHomeUpdateBanner];
+    [self updateTabBadges];
+    [self rebuildFilesTab];
+}
+
+- (void)onOTACheckTapped {
+    [HorizonOTAUpdater.shared checkForUpdatesForce:YES];
+}
+
+- (void)onOTAInstallTapped:(UIButton *)sender {
+    [HorizonOTAUpdater.shared installUpdateFromViewController:self sourceView:sender];
+}
+
+- (void)onOTAInstallerChanged:(UISegmentedControl *)sender {
+    HorizonSettings.shared.otaInstaller = (HorizonOTAInstaller)sender.selectedSegmentIndex;
+}
+
+- (void)onOTAAutoCheckChanged:(UISwitch *)sender {
+    HorizonSettings.shared.autoCheckUpdates = sender.isOn;
+}
+
+- (void)onOTAAddFeatherRepoTapped {
+    [HorizonOTAUpdater.shared addRepoSourceWithInstaller:HorizonOTAInstallerFeather fromViewController:self];
+}
+
+- (void)onOTAAddSideStoreRepoTapped {
+    [HorizonOTAUpdater.shared addRepoSourceWithInstaller:HorizonOTAInstallerSideStore fromViewController:self];
+}
+
+- (void)onOTACopySourceURLTapped:(UIButton *)sender {
+    UIPasteboard.generalPasteboard.string = HorizonSettings.shared.otaSourceURL;
+    [sender setTitle:@"Скопировано" forState:UIControlStateNormal];
+    [sender setTitleColor:pl_emerald() forState:UIControlStateNormal];
+    __weak UIButton *weakBtn = sender;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.8 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        UIButton *btn = weakBtn;
+        if (btn == nil) return;
+        [btn setTitle:@"Копировать" forState:UIControlStateNormal];
+        [btn setTitleColor:pl_textPrimary() forState:UIControlStateNormal];
+    });
+}
+
+- (void)onOTAEditSourceURLTapped {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Источник OTA (source.json)"
+                                                                   message:@"Укажите HTTPS-ссылку на AltStore / Feather Source v2 JSON."
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull tf) {
+        tf.text = HorizonSettings.shared.otaSourceURL;
+        tf.placeholder = HorizonSettings.defaultOTASourceURL;
+        tf.keyboardType = UIKeyboardTypeURL;
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+        tf.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    __weak typeof(self) weakSelf = self;
+    __weak UIAlertController *weakAlert = alert;
+    [alert addAction:[UIAlertAction actionWithTitle:@"Сохранить"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+        (void)action;
+        NSString *val = [weakAlert.textFields.firstObject.text
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (val.length > 0 && ![val.lowercaseString hasPrefix:@"https://"] && ![val.lowercaseString hasPrefix:@"http://"]) {
+            [weakSelf showAlertTitle:@"Некорректный URL" message:@"Ссылка должна начинаться с https:// или http://"];
+            return;
+        }
+        HorizonSettings.shared.otaSourceURL = val ?: @"";
+        [weakSelf rebuildFilesTab];
+        [HorizonOTAUpdater.shared checkForUpdatesForce:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"По умолчанию"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+        (void)action;
+        [HorizonSettings.shared resetOTASourceURL];
+        [weakSelf rebuildFilesTab];
+        [HorizonOTAUpdater.shared checkForUpdatesForce:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Отмена" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

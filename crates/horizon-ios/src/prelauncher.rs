@@ -623,6 +623,155 @@ pub fn extract_resources_zip(zip_path: &Path, dest_resources_dir: &Path) -> Resu
     Ok(extracted)
 }
 
+// ============================================================================
+// OTA Update version comparison and deep-link URL builders
+// ============================================================================
+
+/// Default AltStore / SideStore / Feather Source v2 manifest URL on GitHub Releases.
+pub const DEFAULT_OTA_SOURCE_URL: &str =
+    "https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/source.json";
+
+/// Target sideloading installer preference (mirrors `HorizonOTAInstaller` in Obj-C).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum OtaInstaller {
+    Auto = 0,
+    Feather = 1,
+    SideStore = 2,
+    AltStore = 3,
+    Direct = 4,
+}
+
+impl OtaInstaller {
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Feather,
+            2 => Self::SideStore,
+            3 => Self::AltStore,
+            4 => Self::Direct,
+            _ => Self::Auto,
+        }
+    }
+}
+
+fn parse_numeric_version_parts(raw: &str) -> Vec<u64> {
+    let trimmed = raw.trim().trim_start_matches(['v', 'V']);
+    let core = trimmed.split(['-', '+']).next().unwrap_or(trimmed);
+    core.split('.')
+        .map(|part| {
+            let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
+            digits.parse::<u64>().unwrap_or(0)
+        })
+        .collect()
+}
+
+/// Strict numeric dot-separated version comparison (e.g. `0.20261122.1000 > 0.20261122.900`).
+pub fn compare_version_strings(a: &str, b: &str) -> std::cmp::Ordering {
+    let pa = parse_numeric_version_parts(a);
+    let pb = parse_numeric_version_parts(b);
+    let len = pa.len().max(pb.len());
+    for i in 0..len {
+        let va = pa.get(i).copied().unwrap_or(0);
+        let vb = pb.get(i).copied().unwrap_or(0);
+        match va.cmp(&vb) {
+            std::cmp::Ordering::Equal => continue,
+            ord => return ord,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Returns `true` when `(remote_version, remote_build)` is strictly newer than
+/// `(local_version, local_build)`. Uses `buildVersion` as a tie-breaker when short versions match.
+pub fn is_ota_update_newer(
+    local_version: &str,
+    local_build: &str,
+    remote_version: &str,
+    remote_build: &str,
+) -> bool {
+    let rv = remote_version.trim();
+    if rv.is_empty() {
+        return false;
+    }
+    match compare_version_strings(rv, local_version) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        std::cmp::Ordering::Equal => {
+            let rb = remote_build.trim();
+            let lb = local_build.trim();
+            if rb.is_empty() {
+                return false;
+            }
+            if lb.is_empty() || lb == "BUILD_NUMBER" {
+                return true;
+            }
+            compare_version_strings(rb, lb) == std::cmp::Ordering::Greater
+        }
+    }
+}
+
+/// RFC 3986 percent-encoding for a query parameter value (`?url=...`).
+pub fn percent_encode_query_value(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(input.len() + 16);
+    for &b in input.as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0F) as usize] as char);
+        }
+    }
+    out
+}
+
+/// Builds the verified upstream install deep link for an `.ipa` URL:
+/// - Feather: `feather://install/<raw-https-url>` (NO `?url=` query param)
+/// - SideStore: `sidestore://install?url=<percent-encoded-https-url>`
+/// - AltStore: `altstore://install?url=<percent-encoded-https-url>`
+/// - Direct / Auto fallback: `<raw-https-url>`
+pub fn build_ota_install_url(installer: OtaInstaller, ipa_url: &str) -> Option<String> {
+    let url = ipa_url.trim();
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return None;
+    }
+    let built = match installer {
+        OtaInstaller::Feather => format!("feather://install/{url}"),
+        OtaInstaller::SideStore => {
+            format!("sidestore://install?url={}", percent_encode_query_value(url))
+        }
+        OtaInstaller::AltStore => {
+            format!("altstore://install?url={}", percent_encode_query_value(url))
+        }
+        OtaInstaller::Direct | OtaInstaller::Auto => url.to_owned(),
+    };
+    Some(built)
+}
+
+/// Builds the verified upstream repo-source deep link for a `source.json` URL:
+/// - Feather: `feather://source/<raw-https-url>` (NO `?url=` query param)
+/// - SideStore: `sidestore://source?url=<percent-encoded-https-url>`
+/// - AltStore: `altstore://source?url=<percent-encoded-https-url>`
+/// - Direct / Auto fallback: `<raw-https-url>`
+pub fn build_ota_source_url(installer: OtaInstaller, source_url: &str) -> Option<String> {
+    let url = source_url.trim();
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return None;
+    }
+    let built = match installer {
+        OtaInstaller::Feather => format!("feather://source/{url}"),
+        OtaInstaller::SideStore => {
+            format!("sidestore://source?url={}", percent_encode_query_value(url))
+        }
+        OtaInstaller::AltStore => {
+            format!("altstore://source?url={}", percent_encode_query_value(url))
+        }
+        OtaInstaller::Direct | OtaInstaller::Auto => url.to_owned(),
+    };
+    Some(built)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -820,5 +969,112 @@ mod tests {
         assert_eq!(fs::read_to_string(dest.join("assets/test.txt")).unwrap(), "ok");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ota_version_comparison_handles_semver_and_build_tiebreaker() {
+        assert!(is_ota_update_newer(
+            "0.1.0",
+            "1",
+            "0.20261122.845",
+            "202611220845"
+        ));
+        assert!(is_ota_update_newer(
+            "0.20261122.845",
+            "202611220845",
+            "0.20261122.900",
+            "202611220900"
+        ));
+        // Numeric comparison must NOT compare lexicographically ("1000" > "900").
+        assert!(is_ota_update_newer(
+            "0.20261122.900",
+            "202611220900",
+            "0.20261122.1000",
+            "202611221000"
+        ));
+        assert!(is_ota_update_newer(
+            "0.20261122.2359",
+            "202611222359",
+            "0.20261123.0",
+            "202611230000"
+        ));
+        // Same short version, higher buildVersion counts as newer.
+        assert!(is_ota_update_newer(
+            "0.20261122.845",
+            "202611220845",
+            "0.20261122.845",
+            "202611220846"
+        ));
+        // Identical version and build is NOT newer.
+        assert!(!is_ota_update_newer(
+            "0.20261122.845",
+            "202611220845",
+            "0.20261122.845",
+            "202611220845"
+        ));
+        // Lower remote version is NEVER newer even if buildVersion is larger.
+        assert!(!is_ota_update_newer(
+            "0.20261122.1000",
+            "202611221000",
+            "0.20261122.900",
+            "202611229999"
+        ));
+        // Unstamped placeholder build counts as older when short versions match.
+        assert!(is_ota_update_newer(
+            "0.1.0",
+            "BUILD_NUMBER",
+            "0.1.0",
+            "202611220845"
+        ));
+        // Empty remote version is rejected.
+        assert!(!is_ota_update_newer("0.1.0", "1", "", "202611220845"));
+    }
+
+    #[test]
+    fn ota_deep_link_url_formatting_matches_upstream_schemes() {
+        let ipa = "https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/Horizon.ipa";
+        let src = DEFAULT_OTA_SOURCE_URL;
+        let enc_ipa = "https%3A%2F%2Fgithub.com%2Fnggurbanov%2Fhorizon-ios%2Freleases%2Fdownload%2Fios-latest%2FHorizon.ipa";
+        let enc_src = "https%3A%2F%2Fgithub.com%2Fnggurbanov%2Fhorizon-ios%2Freleases%2Fdownload%2Fios-latest%2Fsource.json";
+
+        // Feather: raw HTTPS URL directly after `/install/` and `/source/`, NO `?url=`.
+        assert_eq!(
+            build_ota_install_url(OtaInstaller::Feather, ipa).as_deref(),
+            Some("feather://install/https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/Horizon.ipa")
+        );
+        assert_eq!(
+            build_ota_source_url(OtaInstaller::Feather, src).as_deref(),
+            Some("feather://source/https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/source.json")
+        );
+
+        // SideStore: `?url=` with RFC 3986 percent-encoding.
+        assert_eq!(
+            build_ota_install_url(OtaInstaller::SideStore, ipa).as_deref(),
+            Some(format!("sidestore://install?url={enc_ipa}").as_str())
+        );
+        assert_eq!(
+            build_ota_source_url(OtaInstaller::SideStore, src).as_deref(),
+            Some(format!("sidestore://source?url={enc_src}").as_str())
+        );
+
+        // AltStore: `?url=` with RFC 3986 percent-encoding.
+        assert_eq!(
+            build_ota_install_url(OtaInstaller::AltStore, ipa).as_deref(),
+            Some(format!("altstore://install?url={enc_ipa}").as_str())
+        );
+        assert_eq!(
+            build_ota_source_url(OtaInstaller::AltStore, src).as_deref(),
+            Some(format!("altstore://source?url={enc_src}").as_str())
+        );
+
+        // Direct Safari fallback keeps raw HTTPS URL.
+        assert_eq!(
+            build_ota_install_url(OtaInstaller::Direct, ipa).as_deref(),
+            Some(ipa)
+        );
+
+        // Non-HTTP(S) schemes are rejected.
+        assert_eq!(build_ota_install_url(OtaInstaller::Feather, "file:///tmp/a.ipa"), None);
+        assert_eq!(build_ota_source_url(OtaInstaller::SideStore, ""), None);
     }
 }

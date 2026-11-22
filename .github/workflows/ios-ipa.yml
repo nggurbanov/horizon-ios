@@ -56,8 +56,20 @@ jobs:
           app=Payload/Horizon.app
           mkdir -p "$app"
           cp target/aarch64-apple-ios/fast/horizon-ios "$app/"
-          sed "s/BUILD_NUMBER/${{ github.run_number }}/" crates/horizon-ios/app/Info.plist > "$app/Info.plist"
-          plutil -convert binary1 "$app/Info.plist"
+          BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+          SHORT_VERSION="$(python3 -c 'import sys; b = sys.argv[1]; print(f"0.{b[:8]}.{int(b[8:12])}")' "$BUILD_NUMBER")"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "SHORT_VERSION=$SHORT_VERSION" >> "$GITHUB_ENV"
+          python3 - crates/horizon-ios/app/Info.plist "$app/Info.plist" "$SHORT_VERSION" "$BUILD_NUMBER" <<'PY'
+          import plistlib, sys
+          src, dst, short_ver, build_num = sys.argv[1:5]
+          with open(src, "rb") as f:
+              data = plistlib.load(f)
+          data["CFBundleShortVersionString"] = short_ver
+          data["CFBundleVersion"] = build_num
+          with open(dst, "wb") as f:
+              plistlib.dump(data, f, fmt=plistlib.FMT_BINARY)
+          PY
           printf 'APPL????' > "$app/PkgInfo"
           src=packaging/icons/hicolor/512x512/apps/horizon.png
           for spec in "AppIcon60x60@2x.png 120" "AppIcon60x60@3x.png 180" "AppIcon76x76@2x~ipad.png 152"; do
@@ -68,21 +80,56 @@ jobs:
           cp LICENSES/GPL-3.0.txt "$app/LICENSE-GPL-3.0.txt"
           codesign --force --sign - --entitlements crates/horizon-ios/app/entitlements.plist "$app"
           zip -qry Horizon.ipa Payload
-          ls -la Horizon.ipa
+          PREV_SOURCE=""
+          if curl -fsSL "https://github.com/${{ github.repository }}/releases/download/ios-latest/source.json" -o prev-source.json 2>/dev/null; then
+            PREV_SOURCE="prev-source.json"
+          fi
+          COMMIT_SUBJECT="$(git log -1 --pretty=%s)"
+          NOTES="Horizon iOS ${SHORT_VERSION} (build ${BUILD_NUMBER}, commit ${GITHUB_SHA::10}): ${COMMIT_SUBJECT}"
+          if [ -n "$PREV_SOURCE" ]; then
+            python3 tools/ios_ota_source.py \
+              --ipa Horizon.ipa \
+              --download-url "https://github.com/${{ github.repository }}/releases/download/ios-latest/Horizon.ipa" \
+              --out source.json \
+              --repo "${{ github.repository }}" \
+              --notes "$NOTES" \
+              --prev-source "$PREV_SOURCE"
+          else
+            python3 tools/ios_ota_source.py \
+              --ipa Horizon.ipa \
+              --download-url "https://github.com/${{ github.repository }}/releases/download/ios-latest/Horizon.ipa" \
+              --out source.json \
+              --repo "${{ github.repository }}" \
+              --notes "$NOTES"
+          fi
+          ls -la Horizon.ipa source.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: horizon-ios-${{ matrix.runner }}
           path: |
             Horizon.ipa
+            source.json
             build.log
       - name: Publish the latest build
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Unofficial iOS build of Horizon from ${GITHUB_SHA::10} (run ${{ github.run_number }}, ${{ matrix.runner }}). Unsigned for your device: install it with AltStore, SideStore, Sideloadly or TrollStore. You need your own copy of Minecraft: Java Edition; see HORIZON-IOS.md for putting the game files on the device."
-          # Replace the IPA on the existing release: the job's token can't create the tag
-          # (HTTP 403), so the release keeps its first tag and the notes name the build.
-          gh release upload ios-latest Horizon.ipa --clobber
+          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/ios-latest/source.json"
+          ENCODED_SOURCE_URL="$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$SOURCE_URL")"
+          notes=$(cat <<EOF
+          Unofficial iOS build of Horizon **v${SHORT_VERSION}** (build \`${BUILD_NUMBER}\`, commit \`${GITHUB_SHA::10}\`, run ${{ github.run_number }}, ${{ matrix.runner }}).
+
+          Unsigned for your device: install with Feather, SideStore, AltStore, Sideloadly or TrollStore. You need your own copy of Minecraft: Java Edition; see \`HORIZON-IOS.md\` for putting the game files on the device.
+
+          ### OTA Repository (AltStore / SideStore / Feather Source v2)
+          - **Source JSON:** \`${SOURCE_URL}\`
+          - **Feather:** \`feather://source/${SOURCE_URL}\`
+          - **SideStore:** \`sidestore://source?url=${ENCODED_SOURCE_URL}\`
+          EOF
+          )
+          # Replace the IPA and OTA source manifest on the existing release: the job's token
+          # can't create the tag (HTTP 403), so the release keeps its first tag and the notes name the build.
+          gh release upload ios-latest Horizon.ipa source.json --clobber
           gh release edit ios-latest --notes "$notes"

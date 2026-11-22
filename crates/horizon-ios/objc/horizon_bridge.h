@@ -270,6 +270,25 @@ bool horizon_ios_save_options(const char *options_path, int32_t render_distance,
 char *horizon_ios_list_worlds_json(const char *saves_dir);
 int32_t horizon_ios_extract_resources_zip(const char *zip_path, const char *dest_dir, char *err_buf, size_t err_buf_len);
 
+// OTA installer kinds (matches HorizonOTAInstaller / prelauncher::OtaInstaller)
+enum {
+    HORIZON_OTA_INSTALLER_AUTO = 0,
+    HORIZON_OTA_INSTALLER_FEATHER = 1,
+    HORIZON_OTA_INSTALLER_SIDESTORE = 2,
+    HORIZON_OTA_INSTALLER_ALTSTORE = 3,
+    HORIZON_OTA_INSTALLER_DIRECT = 4,
+};
+
+// OTA Rust FFI (bridge.rs -> prelauncher.rs)
+bool horizon_ios_ota_is_newer(
+    const char *local_version,
+    const char *local_build,
+    const char *remote_version,
+    const char *remote_build
+);
+char *horizon_ios_ota_install_url(uint8_t installer_kind, const char *ipa_url);
+char *horizon_ios_ota_source_url(uint8_t installer_kind, const char *source_url);
+
 #ifdef __cplusplus
 }
 #endif

@@ -10,11 +10,20 @@ typedef NS_ENUM(NSInteger, HorizonTouchScheme) {
     HorizonTouchSchemeDpadTap = 2,           // Classic D-Pad & Tap to Interact
 };
 
+typedef NS_ENUM(NSInteger, HorizonOTAInstaller) {
+    HorizonOTAInstallerAuto = 0,      // Auto-detect installed sideloader or present chooser
+    HorizonOTAInstallerFeather = 1,   // feather://install/<raw-https-url>
+    HorizonOTAInstallerSideStore = 2, // sidestore://install?url=<percent-encoded-https-url>
+    HorizonOTAInstallerAltStore = 3,  // altstore://install?url=<percent-encoded-https-url>
+    HorizonOTAInstallerDirect = 4,    // Open raw .ipa URL in Safari
+};
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface HorizonSettings : NSObject
 
 + (instancetype)shared;
++ (NSString *)defaultOTASourceURL;
 
 @property (nonatomic, assign) HorizonTouchScheme scheme;
 @property (nonatomic, assign) BOOL floatingJoystick;
@@ -30,8 +39,14 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL skipLauncher;         // default NO
 @property (nonatomic, copy, nullable) NSString *lastQuickServerAddress;
 
+// OTA update settings
+@property (nonatomic, assign) HorizonOTAInstaller otaInstaller; // default Auto
+@property (nonatomic, assign) BOOL autoCheckUpdates;            // default YES
+@property (nonatomic, copy) NSString *otaSourceURL;             // default GitHub ios-latest source.json
+
 - (BOOL)isTapToInteract;
 - (void)resetToDefaults;
+- (void)resetOTASourceURL;
 - (void)syncToBridge;
 
 @end

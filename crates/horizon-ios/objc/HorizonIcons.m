@@ -935,6 +935,21 @@
             CGContextRestoreGState(c);
             break;
         }
+        case HorizonIconDownload: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 4.0);
+            CGContextAddLineToPoint(c, 12.0, 14.5);
+            CGContextMoveToPoint(c, 8.2, 10.8);
+            CGContextAddLineToPoint(c, 12.0, 14.8);
+            CGContextAddLineToPoint(c, 15.8, 10.8);
+            CGContextMoveToPoint(c, 5.0, 14.8);
+            CGContextAddLineToPoint(c, 5.0, 19.5);
+            CGContextAddLineToPoint(c, 19.0, 19.5);
+            CGContextAddLineToPoint(c, 19.0, 14.8);
+            CGContextStrokePath(c);
+            break;
+        }
     }
 }
 

@@ -658,3 +658,64 @@ pub unsafe extern "C" fn horizon_ios_extract_resources_zip(
         }
     }
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_ota_is_newer(
+    local_version: *const c_char,
+    local_build: *const c_char,
+    remote_version: *const c_char,
+    remote_build: *const c_char,
+) -> bool {
+    let as_str = |p: *const c_char| -> &str {
+        if p.is_null() {
+            ""
+        } else {
+            // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+            unsafe { CStr::from_ptr(p) }.to_str().unwrap_or("")
+        }
+    };
+    horizon_ios::prelauncher::is_ota_update_newer(
+        as_str(local_version),
+        as_str(local_build),
+        as_str(remote_version),
+        as_str(remote_build),
+    )
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_ota_install_url(
+    installer_kind: u8,
+    ipa_url: *const c_char,
+) -> *mut c_char {
+    if ipa_url.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 URL string.
+    let Ok(raw) = unsafe { CStr::from_ptr(ipa_url) }.to_str() else {
+        return std::ptr::null_mut();
+    };
+    let installer = horizon_ios::prelauncher::OtaInstaller::from_u8(installer_kind);
+    match horizon_ios::prelauncher::build_ota_install_url(installer, raw) {
+        Some(url) => into_c_string(url),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_ota_source_url(
+    installer_kind: u8,
+    source_url: *const c_char,
+) -> *mut c_char {
+    if source_url.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 URL string.
+    let Ok(raw) = unsafe { CStr::from_ptr(source_url) }.to_str() else {
+        return std::ptr::null_mut();
+    };
+    let installer = horizon_ios::prelauncher::OtaInstaller::from_u8(installer_kind);
+    match horizon_ios::prelauncher::build_ota_source_url(installer, raw) {
+        Some(url) => into_c_string(url),
+        None => std::ptr::null_mut(),
+    }
+}

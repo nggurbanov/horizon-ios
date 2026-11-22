@@ -92,6 +92,12 @@
 			<string>ExtendedGamepad</string>
 		</dict>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>feather</string>
+		<string>sidestore</string>
+		<string>altstore</string>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

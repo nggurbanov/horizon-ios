@@ -1,16 +1,18 @@
 //! Compiles the native iOS Bedrock touch/gamepad/keyboard-mouse overlay (`objc/`) into the app.
 use std::path::{Path, PathBuf};
 
-fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
+fn sources(dir: &Path, out_m: &mut Vec<PathBuf>, out_h: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            sources(&path, out);
+            sources(&path, out_m, out_h);
         } else if path.extension().is_some_and(|e| e == "m") {
-            out.push(path);
+            out_m.push(path);
+        } else if path.extension().is_some_and(|e| e == "h") {
+            out_h.push(path);
         }
     }
 }
@@ -22,9 +24,11 @@ fn main() {
         return;
     }
     let mut files = Vec::new();
-    sources(&objc, &mut files);
+    let mut headers = Vec::new();
+    sources(&objc, &mut files, &mut headers);
     files.sort();
-    for file in &files {
+    headers.sort();
+    for file in files.iter().chain(headers.iter()) {
         println!("cargo:rerun-if-changed={}", file.display());
     }
     cc::Build::new()

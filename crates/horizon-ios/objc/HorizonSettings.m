@@ -15,12 +15,22 @@ static NSString * const kPrefGyroEnabled       = @"horizon.touch.gyroEnabled";
 static NSString * const kPrefGyroSensitivity   = @"horizon.touch.gyroSensitivity";
 static NSString * const kPrefSkipLauncher      = @"horizon.launcher.skipLauncher";
 static NSString * const kPrefLastQuickServer   = @"horizon.launcher.lastQuickServer";
+static NSString * const kPrefOTAInstaller      = @"horizon.ota.installer";
+static NSString * const kPrefOTAAutoCheck      = @"horizon.ota.autoCheckUpdates";
+static NSString * const kPrefOTASourceURL      = @"horizon.ota.sourceURL";
+
+static NSString * const kDefaultOTASourceURL =
+    @"https://github.com/nggurbanov/horizon-ios/releases/download/ios-latest/source.json";
 
 static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
 @implementation HorizonSettings
+
++ (NSString *)defaultOTASourceURL {
+    return kDefaultOTASourceURL;
+}
 
 + (instancetype)shared {
     static HorizonSettings *instance = nil;
@@ -48,6 +58,9 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
             kPrefGyroEnabled: @NO,
             kPrefGyroSensitivity: @(1.0),
             kPrefSkipLauncher: @NO,
+            kPrefOTAInstaller: @(HorizonOTAInstallerAuto),
+            kPrefOTAAutoCheck: @YES,
+            kPrefOTASourceURL: kDefaultOTASourceURL,
         }];
         [self loadFromDefaults];
     }
@@ -73,6 +86,16 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     _gyroSensitivity = clampf_cg([d doubleForKey:kPrefGyroSensitivity], 0.20, 3.00);
     _skipLauncher = [d boolForKey:kPrefSkipLauncher];
     _lastQuickServerAddress = [[d stringForKey:kPrefLastQuickServer] copy];
+
+    NSInteger inst = [d integerForKey:kPrefOTAInstaller];
+    if (inst < HorizonOTAInstallerAuto || inst > HorizonOTAInstallerDirect) {
+        inst = HorizonOTAInstallerAuto;
+    }
+    _otaInstaller = (HorizonOTAInstaller)inst;
+    _autoCheckUpdates = [d boolForKey:kPrefOTAAutoCheck];
+    NSString *src = [[d stringForKey:kPrefOTASourceURL]
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    _otaSourceURL = (src.length > 0) ? [src copy] : [kDefaultOTASourceURL copy];
     [self syncToBridge];
 }
 
@@ -145,6 +168,34 @@ static CGFloat clampf_cg(CGFloat v, CGFloat lo, CGFloat hi) {
     } else {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:kPrefLastQuickServer];
     }
+}
+
+- (void)setOtaInstaller:(HorizonOTAInstaller)otaInstaller {
+    if (otaInstaller < HorizonOTAInstallerAuto || otaInstaller > HorizonOTAInstallerDirect) {
+        otaInstaller = HorizonOTAInstallerAuto;
+    }
+    _otaInstaller = otaInstaller;
+    [NSUserDefaults.standardUserDefaults setInteger:otaInstaller forKey:kPrefOTAInstaller];
+}
+
+- (void)setAutoCheckUpdates:(BOOL)autoCheckUpdates {
+    _autoCheckUpdates = autoCheckUpdates;
+    [NSUserDefaults.standardUserDefaults setBool:autoCheckUpdates forKey:kPrefOTAAutoCheck];
+}
+
+- (void)setOtaSourceURL:(NSString *)otaSourceURL {
+    NSString *trimmed = [otaSourceURL stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0) {
+        _otaSourceURL = [kDefaultOTASourceURL copy];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:kPrefOTASourceURL];
+    } else {
+        _otaSourceURL = [trimmed copy];
+        [NSUserDefaults.standardUserDefaults setObject:_otaSourceURL forKey:kPrefOTASourceURL];
+    }
+}
+
+- (void)resetOTASourceURL {
+    self.otaSourceURL = kDefaultOTASourceURL;
 }
 
 - (BOOL)isTapToInteract {

@@ -70,6 +70,7 @@ typedef NS_ENUM(NSInteger, HorizonIconKind) {
     HorizonIconWarning,
     HorizonIconChevronRight,
     HorizonIconHorizonCube,
+    HorizonIconDownload,
 };
 
 NS_ASSUME_NONNULL_BEGIN
