@@ -289,6 +289,41 @@ bool horizon_ios_ota_is_newer(
 char *horizon_ios_ota_install_url(uint8_t installer_kind, const char *ipa_url);
 char *horizon_ios_ota_source_url(uint8_t installer_kind, const char *source_url);
 
+// Mod & Pack Browser / Manager Rust FFI (bridge.rs -> mod_manager.rs)
+// Safe to invoke on background queues; caller frees non-null return strings with horizon_ios_free_string.
+char *horizon_ios_mods_search_json(const char *game_dir, const char *request_json);
+char *horizon_ios_mods_details_json(
+    const char *game_dir,
+    const char *source,
+    const char *project_id,
+    const char *kind,
+    const char *world_folder
+);
+char *horizon_ios_mods_install_json(const char *game_dir, const char *request_json);
+char *horizon_ios_mods_list_installed_json(
+    const char *game_dir,
+    const char *world_folder,
+    const char *updates_json
+);
+char *horizon_ios_mods_check_updates_json(const char *game_dir, bool force_refresh);
+char *horizon_ios_mods_update_json(const char *game_dir, const char *request_json);
+char *horizon_ios_mods_toggle_enabled_json(
+    const char *game_dir,
+    const char *kind,
+    const char *key,
+    const char *world_folder,
+    bool enabled
+);
+char *horizon_ios_mods_reorder_rp_json(const char *game_dir, const char *file_name, bool move_up);
+char *horizon_ios_mods_select_shader_json(const char *game_dir, const char *shader_key);
+char *horizon_ios_mods_remove_json(
+    const char *game_dir,
+    const char *kind,
+    const char *key,
+    const char *world_folder
+);
+char *horizon_ios_mods_icon_path(const char *game_dir, const char *icon_url);
+
 #ifdef __cplusplus
 }
 #endif

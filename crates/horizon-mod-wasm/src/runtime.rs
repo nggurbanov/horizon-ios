@@ -167,14 +167,24 @@ pub(crate) fn without_threads(config: &mut wasmtime::Config) -> &mut wasmtime::C
         .shared_memory(THREADS[1].1)
 }
 
-/// Wasmtime's other defaults with [`THREADS`]: for tests that need no epoch deadlines.
-#[cfg(test)]
-pub(crate) fn test_engine() -> Engine {
-    Engine::new(without_threads(&mut wasmtime::Config::new())).unwrap()
+// horizon-ios: Pulley64 bytecode interpreter target for iOS (no JIT, no executable pages,
+// no Mach exception ports, and bounded virtual memory reservations for unjailbroken devices).
+#[cfg(any(test, target_os = "ios"))]
+pub(crate) fn apply_pulley_target(
+    config: &mut wasmtime::Config,
+) -> wasmtime::Result<&mut wasmtime::Config> {
+    config.target("pulley64")?;
+    config
+        .signals_based_traps(false)
+        .macos_use_mach_ports(false)
+        .memory_guard_size(0)
+        .memory_reservation(64 * 1024 * 1024)
+        .memory_reservation_for_growth(16 * 1024 * 1024)
+        .memory_init_cow(false);
+    Ok(config)
 }
 
-/// The settings of the engine mods run on, without its epoch ticker.
-pub(crate) fn engine_config() -> wasmtime::Config {
+fn base_engine_config() -> wasmtime::Config {
     let mut config = wasmtime::Config::new();
     without_threads(&mut config);
     config.epoch_interruption(ENGINE_CONFIG.1);
@@ -185,6 +195,33 @@ pub(crate) fn engine_config() -> wasmtime::Config {
         horizon_guest_stack::GUEST_STACK_BYTES + horizon_guest_stack::HOST_HEADROOM,
     );
     config
+}
+
+// horizon-ios: explicit Pulley64 engine config helper, also exercised by host unit tests.
+#[cfg(any(test, target_os = "ios"))]
+pub(crate) fn pulley_engine_config() -> wasmtime::Result<wasmtime::Config> {
+    let mut config = base_engine_config();
+    apply_pulley_target(&mut config)?;
+    Ok(config)
+}
+
+/// Wasmtime's other defaults with [`THREADS`]: for tests that need no epoch deadlines.
+#[cfg(test)]
+pub(crate) fn test_engine() -> Engine {
+    Engine::new(without_threads(&mut wasmtime::Config::new())).unwrap()
+}
+
+/// The settings of the engine mods run on, without its epoch ticker.
+pub(crate) fn engine_config() -> wasmtime::Config {
+    // horizon-ios: run WASM mods via Wasmtime's Pulley64 interpreter on iOS (no JIT).
+    #[cfg(target_os = "ios")]
+    {
+        pulley_engine_config().expect("pulley64 target is enabled in wasmtime")
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        base_engine_config()
+    }
 }
 
 pub(crate) fn engine() -> wasmtime::Result<Engine> {

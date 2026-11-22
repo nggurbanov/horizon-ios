@@ -719,3 +719,216 @@ pub unsafe extern "C" fn horizon_ios_ota_source_url(
         None => std::ptr::null_mut(),
     }
 }
+
+// ============================================================================
+// Mod & Pack Browser / Manager FFI (bridge.rs -> mod_manager.rs)
+// Safe to invoke on background GCD queues. Caller frees non-null strings with
+// `horizon_ios_free_string`.
+// ============================================================================
+
+unsafe fn cstr_or_empty<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        ""
+    } else {
+        // SAFETY: caller passes a valid NUL-terminated UTF-8 string (or NULL).
+        unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
+    }
+}
+
+fn ok_err_json(res: Result<(), String>) -> *mut c_char {
+    let val = match res {
+        Ok(()) => serde_json::json!({ "ok": true, "error": "" }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    into_c_string(val.to_string())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_search_json(
+    game_dir: *const c_char,
+    request_json: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let raw_req = unsafe { cstr_or_empty(request_json) };
+    let req: horizon_ios::mod_manager::SearchRequest =
+        serde_json::from_str(raw_req).unwrap_or_default();
+    let res = horizon_ios::mod_manager::search_catalog(std::path::Path::new(dir), &req);
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| r#"{"ok":false,"items":[],"total":0,"categories":[],"offline":false,"banner":"","error":"Serialization error"}"#.into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_details_json(
+    game_dir: *const c_char,
+    source: *const c_char,
+    project_id: *const c_char,
+    kind: *const c_char,
+    world_folder: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let src = unsafe { cstr_or_empty(source) };
+    let pid = unsafe { cstr_or_empty(project_id) };
+    let knd = unsafe { cstr_or_empty(kind) };
+    let wrd = unsafe { cstr_or_empty(world_folder) };
+    let res = horizon_ios::mod_manager::fetch_project_details(
+        std::path::Path::new(dir),
+        src,
+        pid,
+        knd,
+        wrd,
+    );
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| r#"{"ok":false,"details":null,"error":"Serialization error"}"#.into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_install_json(
+    game_dir: *const c_char,
+    request_json: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let raw_req = unsafe { cstr_or_empty(request_json) };
+    let req: horizon_ios::mod_manager::InstallRequest = match serde_json::from_str(raw_req) {
+        Ok(r) => r,
+        Err(e) => {
+            let v = serde_json::json!({ "ok": false, "installed": null, "error": e.to_string() });
+            return into_c_string(v.to_string());
+        }
+    };
+    let res = horizon_ios::mod_manager::install_project(std::path::Path::new(dir), &req);
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| r#"{"ok":false,"installed":null,"error":"Serialization error"}"#.into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_list_installed_json(
+    game_dir: *const c_char,
+    world_folder: *const c_char,
+    updates_json: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let wrd = unsafe { cstr_or_empty(world_folder) };
+    let raw_upd = unsafe { cstr_or_empty(updates_json) };
+    let parsed_updates: Option<std::collections::HashMap<(String, String, String), String>> =
+        if raw_upd.is_empty() {
+            None
+        } else {
+            serde_json::from_str::<Vec<horizon_ios::mod_manager::AvailableUpdate>>(raw_upd)
+                .ok()
+                .map(|list| {
+                    list.into_iter()
+                        .map(|u| ((u.source, u.project_id, u.world), u.latest_version))
+                        .collect()
+                })
+        };
+    let res = horizon_ios::mod_manager::list_installed_overview(
+        std::path::Path::new(dir),
+        wrd,
+        parsed_updates.as_ref(),
+    );
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| "{}".into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_check_updates_json(
+    game_dir: *const c_char,
+    force_refresh: bool,
+) -> *mut c_char {
+    // SAFETY: caller passes a valid NUL-terminated UTF-8 path (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let res = horizon_ios::mod_manager::check_updates(std::path::Path::new(dir), force_refresh);
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| r#"{"ok":false,"updates":[],"count":0,"error":"Serialization error"}"#.into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_update_json(
+    game_dir: *const c_char,
+    request_json: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = unsafe { cstr_or_empty(game_dir) };
+    let raw_req = unsafe { cstr_or_empty(request_json) };
+    let req: horizon_ios::mod_manager::UpdateRequest =
+        serde_json::from_str(raw_req).unwrap_or_default();
+    let res = horizon_ios::mod_manager::run_update(std::path::Path::new(dir), &req);
+    into_c_string(serde_json::to_string(&res).unwrap_or_else(|_| r#"{"ok":false,"updated":[],"failed":[],"error":"Serialization error"}"#.into()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_toggle_enabled_json(
+    game_dir: *const c_char,
+    kind: *const c_char,
+    key: *const c_char,
+    world_folder: *const c_char,
+    enabled: bool,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = std::path::Path::new(unsafe { cstr_or_empty(game_dir) });
+    let knd = unsafe { cstr_or_empty(kind) };
+    let k = unsafe { cstr_or_empty(key) };
+    let wrd = unsafe { cstr_or_empty(world_folder) };
+    let res = match knd {
+        "mod" => horizon_ios::mod_manager::set_mod_enabled(dir, k, enabled),
+        "resourcepack" => horizon_ios::mod_manager::set_resource_pack_enabled(dir, k, enabled),
+        "datapack" => horizon_ios::mod_manager::set_world_datapack_enabled(dir, wrd, k, enabled),
+        other => Err(format!("Unsupported toggle kind: {other}")),
+    };
+    ok_err_json(res)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_reorder_rp_json(
+    game_dir: *const c_char,
+    file_name: *const c_char,
+    move_up: bool,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = std::path::Path::new(unsafe { cstr_or_empty(game_dir) });
+    let fname = unsafe { cstr_or_empty(file_name) };
+    ok_err_json(horizon_ios::mod_manager::reorder_resource_pack(
+        dir, fname, move_up,
+    ))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_select_shader_json(
+    game_dir: *const c_char,
+    shader_key: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = std::path::Path::new(unsafe { cstr_or_empty(game_dir) });
+    let sk = unsafe { cstr_or_empty(shader_key) };
+    ok_err_json(horizon_ios::mod_manager::set_picked_shader_pack(dir, sk))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_remove_json(
+    game_dir: *const c_char,
+    kind: *const c_char,
+    key: *const c_char,
+    world_folder: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = std::path::Path::new(unsafe { cstr_or_empty(game_dir) });
+    let knd = unsafe { cstr_or_empty(kind) };
+    let k = unsafe { cstr_or_empty(key) };
+    let wrd = unsafe { cstr_or_empty(world_folder) };
+    ok_err_json(horizon_ios::mod_manager::remove_installed_item(
+        dir, knd, k, wrd,
+    ))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mods_icon_path(
+    game_dir: *const c_char,
+    icon_url: *const c_char,
+) -> *mut c_char {
+    // SAFETY: caller passes valid NUL-terminated UTF-8 strings (or NULL).
+    let dir = std::path::Path::new(unsafe { cstr_or_empty(game_dir) });
+    let url = unsafe { cstr_or_empty(icon_url) };
+    match horizon_ios::mod_manager::fetch_or_get_icon_path(dir, url) {
+        Ok(path) => into_c_string(path.to_string_lossy().into_owned()),
+        Err(_) => std::ptr::null_mut(),
+    }
+}

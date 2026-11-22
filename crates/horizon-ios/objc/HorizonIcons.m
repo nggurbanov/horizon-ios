@@ -951,6 +951,59 @@
             CGContextStrokePath(c);
             break;
         }
+        case HorizonIconMods: {
+            // Modular 2x2 stacked blocks (one lifted slightly at top-right) for Mods & Packs
+            CGContextSetLineWidth(c, 1.75);
+            CGRect r1 = CGRectMake(3.6, 4.4, 7.0, 7.0);
+            CGRect r2 = CGRectMake(3.6, 13.4, 7.0, 7.0);
+            CGRect r3 = CGRectMake(12.6, 13.4, 7.0, 7.0);
+            CGRect r4 = CGRectMake(13.6, 3.4, 6.8, 6.8);
+            CGPathRef p1 = CGPathCreateWithRoundedRect(r1, 1.8, 1.8, NULL);
+            CGPathRef p2 = CGPathCreateWithRoundedRect(r2, 1.8, 1.8, NULL);
+            CGPathRef p3 = CGPathCreateWithRoundedRect(r3, 1.8, 1.8, NULL);
+            CGPathRef p4 = CGPathCreateWithRoundedRect(r4, 1.8, 1.8, NULL);
+            CGContextAddPath(c, p1);
+            CGContextAddPath(c, p2);
+            CGContextAddPath(c, p3);
+            CGContextStrokePath(c);
+            CGContextAddPath(c, p4);
+            CGContextFillPath(c);
+            CGPathRelease(p1);
+            CGPathRelease(p2);
+            CGPathRelease(p3);
+            CGPathRelease(p4);
+            break;
+        }
+        case HorizonIconSearch: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextAddEllipseInRect(c, CGRectMake(4.0, 4.0, 11.5, 11.5));
+            CGContextMoveToPoint(c, 14.0, 14.0);
+            CGContextAddLineToPoint(c, 19.6, 19.6);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconArrowUp: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 18.5);
+            CGContextAddLineToPoint(c, 12.0, 5.5);
+            CGContextMoveToPoint(c, 7.0, 10.5);
+            CGContextAddLineToPoint(c, 12.0, 5.5);
+            CGContextAddLineToPoint(c, 17.0, 10.5);
+            CGContextStrokePath(c);
+            break;
+        }
+        case HorizonIconArrowDown: {
+            CGContextSetLineWidth(c, 2.0);
+            CGContextBeginPath(c);
+            CGContextMoveToPoint(c, 12.0, 5.5);
+            CGContextAddLineToPoint(c, 12.0, 18.5);
+            CGContextMoveToPoint(c, 7.0, 13.5);
+            CGContextAddLineToPoint(c, 12.0, 18.5);
+            CGContextAddLineToPoint(c, 17.0, 13.5);
+            CGContextStrokePath(c);
+            break;
+        }
     }
 }
 

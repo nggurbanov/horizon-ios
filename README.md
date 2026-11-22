@@ -10,8 +10,9 @@
 ## What's included
 
 - **Native Rust AOT + Metal:** Runs directly on arm64 iOS 15+ (A12 chip or newer recommended) with **no JVM, no JIT, and no StikDebug required**.
+- **Built-in Mod & Pack Browser + WASM code mods (no JIT):** Browse, search, install, update, toggle, and reorder **Horizon Registry** content & WebAssembly code mods (executed via Wasmtime's **Pulley64** bytecode interpreter — no JIT required), **Horizon shaders**, and **Modrinth** Resource Packs & per-world Data Packs directly inside the Pre-Launcher with SHA-256 / SHA-512 verification.
 - **Bedrock-style native UIKit controls + instant input switching:** 1:1 mobile Bedrock touch controls with 3 schemes (Joystick + Crosshair, Joystick + Tap to Interact, Classic D-Pad), contextual Fly/Swim/Elytra/Dismount buttons, haptics, and optional gyro — switching immediately to Game Controllers (`GCController` + `CoreHaptics`) or Bluetooth/USB Mouse & Keyboard (`GCMouse`/`GCKeyboard` + pointer lock) the moment you press a button or move the mouse.
-- **Native UIKit landscape Pre-Launcher:** 1-tap quick-join for servers and local worlds, live server ping, per-server Auto-Login command templates stored in Keychain, pre-launch `options.txt` graphics presets, in-app resource/resource-pack/shader importer, built-in log viewer & share sheet, automatic EN/RU localization, and a Skip Launcher toggle.
+- **Native UIKit landscape Pre-Launcher:** 1-tap quick-join for servers and local worlds, live server ping, per-server Auto-Login command templates stored in Keychain, pre-launch `options.txt` graphics presets, built-in Mods & Packs browser/manager, in-app resource/pack importer, built-in log viewer & share sheet, automatic EN/RU localization, and a Skip Launcher toggle.
 - **Built-in OTA updates:** AltStore Source v2 feed (`source.json`) with 1-tap updates via **Feather**, **SideStore**, **AltStore**, or direct `.ipa` download in Safari.
 
 ## Install (OTA & Direct `.ipa`)
@@ -40,7 +41,7 @@ This app ships zero Mojang files. Prepare assets once from your own copy of Mine
 
 - Singleplayer, LAN, and offline-mode servers work today. Microsoft online sign-in is not enabled in this fork because upstream Horizon's Azure App ID is reserved for official builds ([docs/forking.md](docs/forking.md)).
 - Requires iOS 15 or later (A12 chip or newer recommended).
-- WebAssembly code mods aren't enabled on iOS yet (no JIT).
+- Horizon content mods (`.hmod`) and WebAssembly code mods run on iOS via Wasmtime Pulley64 without JIT; desktop-only native Rust dylib mods (`native-mod`) cannot run on iOS.
 
 ## Upstream & technical docs
 

@@ -6,6 +6,7 @@
 #import "HorizonIcons.h"
 #import "HorizonL10n.h"
 #import "HorizonLogViewerViewController.h"
+#import "HorizonModsViewController.h"
 #import "HorizonOTAUpdater.h"
 #import "HorizonPreLauncherAppDelegate.h"
 #import "HorizonServerEditorViewController.h"
@@ -18,9 +19,10 @@
 typedef NS_ENUM(NSInteger, HorizonLauncherTab) {
     HorizonLauncherTabHome = 0,
     HorizonLauncherTabServers = 1,
-    HorizonLauncherTabControls = 2,
-    HorizonLauncherTabGraphics = 3,
-    HorizonLauncherTabFiles = 4,
+    HorizonLauncherTabMods = 2,
+    HorizonLauncherTabControls = 3,
+    HorizonLauncherTabGraphics = 4,
+    HorizonLauncherTabFiles = 5,
 };
 
 typedef NS_ENUM(NSInteger, HorizonPickerPurpose) {
@@ -164,7 +166,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         [self addSubview:_warningDot];
 
         [NSLayoutConstraint activateConstraints:@[
-            [self.heightAnchor constraintEqualToConstant:40.0],
+            [self.heightAnchor constraintEqualToConstant:36.0],
             [_iconView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12.0],
             [_iconView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
             [_iconView.widthAnchor constraintEqualToConstant:18.0],
@@ -251,7 +253,11 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 @property (nonatomic, strong) UILabel *launchingLabel;
 
 // Tab Containers
+@property (nonatomic, strong) NSArray<UIView *> *tabStageViews;
 @property (nonatomic, strong) NSArray<UIScrollView *> *tabScrollViews;
+@property (nonatomic, strong) HorizonModsViewController *modsViewController;
+@property (nonatomic, assign) NSUInteger modsInstalledCount;
+@property (nonatomic, assign) NSUInteger modsUpdatesCount;
 @property (nonatomic, strong) UIStackView *homeStack;
 @property (nonatomic, strong) UIStackView *serversStack;
 @property (nonatomic, strong) UIStackView *controlsStack;
@@ -632,19 +638,26 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     brandSub.textColor = pl_textMuted();
     [brandRow addSubview:brandSub];
 
-    // 5 Tab Buttons
+    // 6 Tab Buttons inside a vertical scroll view so compact landscape screens never clip
+    UIScrollView *railScroll = [[UIScrollView alloc] init];
+    railScroll.translatesAutoresizingMaskIntoConstraints = NO;
+    railScroll.showsVerticalScrollIndicator = NO;
+    railScroll.alwaysBounceVertical = NO;
+    [rail addSubview:railScroll];
+
     UIStackView *navStack = [[UIStackView alloc] init];
     navStack.translatesAutoresizingMaskIntoConstraints = NO;
     navStack.axis = UILayoutConstraintAxisVertical;
-    navStack.spacing = 4.0;
-    [rail addSubview:navStack];
+    navStack.spacing = 3.0;
+    [railScroll addSubview:navStack];
 
     HorizonRailTabButton *b0 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Home", @"Главная") icon:HorizonIconHome];
     HorizonRailTabButton *b1 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Servers", @"Серверы") icon:HorizonIconServers];
-    HorizonRailTabButton *b2 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Controls", @"Управление") icon:HorizonIconGamepad];
-    HorizonRailTabButton *b3 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Graphics", @"Графика") icon:HorizonIconSliders];
-    HorizonRailTabButton *b4 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Files", @"Файлы") icon:HorizonIconFolder];
-    self.tabButtons = @[b0, b1, b2, b3, b4];
+    HorizonRailTabButton *b2 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Mods", @"Моды") icon:HorizonIconMods];
+    HorizonRailTabButton *b3 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Controls", @"Управление") icon:HorizonIconGamepad];
+    HorizonRailTabButton *b4 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Graphics", @"Графика") icon:HorizonIconSliders];
+    HorizonRailTabButton *b5 = [[HorizonRailTabButton alloc] initWithTitle:HL(@"Files", @"Файлы") icon:HorizonIconFolder];
+    self.tabButtons = @[b0, b1, b2, b3, b4, b5];
     for (NSUInteger i = 0; i < self.tabButtons.count; i++) {
         HorizonRailTabButton *btn = self.tabButtons[i];
         btn.tag = (NSInteger)i;
@@ -709,15 +722,21 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         [brandSub.leadingAnchor constraintEqualToAnchor:brandTitle.leadingAnchor],
         [brandSub.topAnchor constraintEqualToAnchor:brandTitle.bottomAnchor constant:1.0],
 
-        [navStack.topAnchor constraintEqualToAnchor:brandRow.bottomAnchor constant:14.0],
-        [navStack.leadingAnchor constraintEqualToAnchor:rail.leadingAnchor constant:10.0],
-        [navStack.trailingAnchor constraintEqualToAnchor:rail.trailingAnchor constant:-10.0],
+        [railScroll.topAnchor constraintEqualToAnchor:brandRow.bottomAnchor constant:10.0],
+        [railScroll.leadingAnchor constraintEqualToAnchor:rail.leadingAnchor constant:10.0],
+        [railScroll.trailingAnchor constraintEqualToAnchor:rail.trailingAnchor constant:-10.0],
+        [railScroll.bottomAnchor constraintEqualToAnchor:footerChip.topAnchor constant:-8.0],
+
+        [navStack.topAnchor constraintEqualToAnchor:railScroll.contentLayoutGuide.topAnchor],
+        [navStack.leadingAnchor constraintEqualToAnchor:railScroll.contentLayoutGuide.leadingAnchor],
+        [navStack.trailingAnchor constraintEqualToAnchor:railScroll.contentLayoutGuide.trailingAnchor],
+        [navStack.bottomAnchor constraintEqualToAnchor:railScroll.contentLayoutGuide.bottomAnchor],
+        [navStack.widthAnchor constraintEqualToAnchor:railScroll.frameLayoutGuide.widthAnchor],
 
         [footerChip.leadingAnchor constraintEqualToAnchor:rail.leadingAnchor constant:10.0],
         [footerChip.trailingAnchor constraintEqualToAnchor:rail.trailingAnchor constant:-10.0],
         [footerChip.bottomAnchor constraintEqualToAnchor:rail.bottomAnchor constant:-10.0],
         [footerChip.heightAnchor constraintEqualToConstant:48.0],
-        [footerChip.topAnchor constraintGreaterThanOrEqualToAnchor:navStack.bottomAnchor constant:8.0],
 
         [avatarCircle.leadingAnchor constraintEqualToAnchor:footerChip.leadingAnchor constant:9.0],
         [avatarCircle.centerYAnchor constraintEqualToAnchor:footerChip.centerYAnchor],
@@ -841,7 +860,33 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
         [stacks addObject:st];
     }
 
+    // Embedded Mods & Packs browser/manager child VC
+    self.modsViewController = [[HorizonModsViewController alloc] initWithDocumentsDir:self.documentsDir];
+    [self addChildViewController:self.modsViewController];
+    UIView *modsView = self.modsViewController.view;
+    modsView.translatesAutoresizingMaskIntoConstraints = NO;
+    modsView.hidden = YES;
+    [container addSubview:modsView];
+    [NSLayoutConstraint activateConstraints:@[
+        [modsView.topAnchor constraintEqualToAnchor:container.topAnchor],
+        [modsView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [modsView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [modsView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
+    ]];
+    [self.modsViewController didMoveToParentViewController:self];
+
+    __weak typeof(self) weakSelf = self;
+    self.modsViewController.onInstalledSummaryChanged = ^(NSUInteger installedCount, NSUInteger updatesCount) {
+        typeof(self) s = weakSelf;
+        if (s == nil) return;
+        s.modsInstalledCount = installedCount;
+        s.modsUpdatesCount = updatesCount;
+        [s updateTabBadges];
+        [s rebuildFilesTab];
+    };
+
     self.tabScrollViews = scrolls;
+    self.tabStageViews = @[scrolls[0], scrolls[1], modsView, scrolls[2], scrolls[3], scrolls[4]];
     self.homeStack = stacks[0];
     self.serversStack = stacks[1];
     self.controlsStack = stacks[2];
@@ -2294,12 +2339,14 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
 #pragma mark - Unified UI Refresh
 
 - (void)rebuildForLanguageChange {
-    UIScrollView *activeScroll = self.tabScrollViews[(NSUInteger)self.activeTab];
-    CGPoint savedOffset = activeScroll.contentOffset;
+    UIView *activeView = self.tabStageViews[(NSUInteger)self.activeTab];
+    UIScrollView *activeScroll = [activeView isKindOfClass:UIScrollView.class] ? (UIScrollView *)activeView : nil;
+    CGPoint savedOffset = activeScroll ? activeScroll.contentOffset : CGPointZero;
 
     NSArray<NSString *> *railTitles = @[
         HL(@"Home", @"Главная"),
         HL(@"Servers", @"Серверы"),
+        HL(@"Mods", @"Моды"),
         HL(@"Controls", @"Управление"),
         HL(@"Graphics", @"Графика"),
         HL(@"Files", @"Файлы"),
@@ -2312,11 +2359,14 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     [self buildHomeTab];
     [self buildControlsTab];
     [self buildGraphicsTab];
+    [self.modsViewController rebuildForLanguageChange];
     [self refreshAllUI];
 
     [self.view layoutIfNeeded];
-    CGFloat maxY = MAX(0.0, activeScroll.contentSize.height - activeScroll.bounds.size.height);
-    activeScroll.contentOffset = CGPointMake(0.0, MIN(MAX(0.0, savedOffset.y), maxY));
+    if (activeScroll != nil) {
+        CGFloat maxY = MAX(0.0, activeScroll.contentSize.height - activeScroll.bounds.size.height);
+        activeScroll.contentOffset = CGPointMake(0.0, MIN(MAX(0.0, savedOffset.y), maxY));
+    }
 }
 
 - (void)refreshAllUI {
@@ -2426,6 +2476,19 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     } else {
         srvBtn.badgeLabel.hidden = YES;
     }
+    HorizonRailTabButton *modsBtn = self.tabButtons[HorizonLauncherTabMods];
+    if (self.modsUpdatesCount > 0) {
+        modsBtn.badgeLabel.text = [NSString stringWithFormat:@"↑%lu", (unsigned long)self.modsUpdatesCount];
+        modsBtn.badgeLabel.hidden = NO;
+        modsBtn.warningDot.hidden = YES;
+    } else if (self.modsInstalledCount > 0) {
+        modsBtn.badgeLabel.text = [NSString stringWithFormat:@"%lu", (unsigned long)self.modsInstalledCount];
+        modsBtn.badgeLabel.hidden = NO;
+        modsBtn.warningDot.hidden = YES;
+    } else {
+        modsBtn.badgeLabel.hidden = YES;
+        modsBtn.warningDot.hidden = YES;
+    }
     HorizonRailTabButton *filesBtn = self.tabButtons[HorizonLauncherTabFiles];
     if (!self.resourcesReady) {
         filesBtn.warningDot.backgroundColor = pl_amber();
@@ -2445,7 +2508,10 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
     self.activeTab = tab;
     for (NSUInteger i = 0; i < self.tabButtons.count; i++) {
         self.tabButtons[i].activeTab = ((NSInteger)i == tab);
-        self.tabScrollViews[i].hidden = ((NSInteger)i != tab);
+        self.tabStageViews[i].hidden = ((NSInteger)i != tab);
+    }
+    if (tab == HorizonLauncherTabMods) {
+        [self.modsViewController activateIfNeeded];
     }
 }
 
@@ -2706,6 +2772,7 @@ static BOOL pl_hasIncreasedMemoryEntitlement(void) {
                          message:err.localizedDescription ?: HL(@"Failed to copy file.", @"Не удалось скопировать файл.")];
         } else {
             [self rebuildFilesTab];
+            [self.modsViewController refreshInstalledAndCheckUpdates:NO];
             [self showAlertTitle:HL(@"Import Complete", @"Импорт завершён")
                          message:[NSString stringWithFormat:HL(@"Added %@.", @"Файл %@ добавлен."), picked.lastPathComponent]];
         }

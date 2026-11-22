@@ -46,6 +46,8 @@ jobs:
           cargo build --profile fast --target aarch64-apple-ios -p horizon-ios --keep-going --message-format short 2>&1 \
             | tee build.log | grep -E "^(error|warning: unused)|error\[|^\S+:[0-9]+:[0-9]+: error" || true
           test -f target/aarch64-apple-ios/fast/horizon-ios
+          cargo run --locked -p cargo-horizon-mod -- wasm-std target/horizon-wasm-std.wasm
+          test -f target/horizon-wasm-std.wasm
       - name: Errors
         if: failure()
         run: |
@@ -56,6 +58,7 @@ jobs:
           app=Payload/Horizon.app
           mkdir -p "$app"
           cp target/aarch64-apple-ios/fast/horizon-ios "$app/"
+          cp target/horizon-wasm-std.wasm "$app/horizon-wasm-std.wasm"
           BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
           SHORT_VERSION="$(python3 -c 'import sys; b = sys.argv[1]; print(f"0.{b[:8]}.{int(b[8:12])}")' "$BUILD_NUMBER")"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"

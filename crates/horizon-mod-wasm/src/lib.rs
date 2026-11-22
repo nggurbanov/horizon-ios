@@ -571,7 +571,19 @@ pub fn load_installed(
         Ok(_) => {
             let std = std::env::current_exe()
                 .ok()
-                .and_then(|exe| std::fs::read(exe.with_file_name("horizon-wasm-std.wasm")).ok());
+                .and_then(|exe| std::fs::read(exe.with_file_name("horizon-wasm-std.wasm")).ok())
+                // horizon-ios: also check the game folder (`Documents/`) on iOS if the std
+                // member is not bundled next to the executable.
+                .or_else(|| {
+                    #[cfg(target_os = "ios")]
+                    {
+                        std::fs::read(game_dir.join("horizon-wasm-std.wasm")).ok()
+                    }
+                    #[cfg(not(target_os = "ios"))]
+                    {
+                        None
+                    }
+                });
             load_available_std(
                 std.as_deref(),
                 packages,

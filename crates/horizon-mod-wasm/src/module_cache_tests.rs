@@ -731,3 +731,60 @@ fn compiled_module_loads_cached_after_startup_cleanup() {
     assert!(!stale.exists());
     assert_cached(&next, &engine, &bytes);
 }
+
+// horizon-ios: verify Wasmtime Pulley64 bytecode compilation, `.cwasm` caching,
+// deserialization, and guest execution with Horizon's engine configuration on the host.
+#[test]
+fn pulley64_compiles_caches_deserializes_and_executes_without_jit() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ModuleCache::new(dir.path().join(".horizon-cache/wasm"));
+    let pulley_config = crate::runtime::pulley_engine_config().unwrap();
+    let pulley_engine = Engine::new(&pulley_config).unwrap();
+    assert!(pulley_engine.is_pulley());
+
+    let bytes = wat::parse_str(
+        r#"(module
+            (memory (export "memory") 1)
+            (func (export "add_and_store") (param i32 i32) (result i32)
+                (local $sum i32)
+                (local.set $sum (i32.add (local.get 0) (local.get 1)))
+                (i32.store (i32.const 0) (local.get $sum))
+                (i32.load (i32.const 0))
+            )
+        )"#,
+    )
+    .unwrap();
+
+    // Pulley64 cache keys stay cleanly separated from host JIT artifacts.
+    let host_engine = crate::runtime::engine().unwrap();
+    if !host_engine.is_pulley() {
+        assert_ne!(
+            ModuleCache::key(&pulley_engine, &bytes),
+            ModuleCache::key(&host_engine, &bytes)
+        );
+    }
+
+    let (compiled, first_source) = cache.load_or_compile(&pulley_engine, &bytes).unwrap();
+    assert_eq!(first_source, Source::Compiled);
+    let cached_path = entry(&cache, &pulley_engine, &bytes);
+    assert!(cached_path.is_file());
+
+    let (cached, second_source) = cache.load_or_compile(&pulley_engine, &bytes).unwrap();
+    assert_eq!(second_source, Source::Cached);
+
+    // Also verify raw byte deserialization works identically for Pulley64 bytecode.
+    let serialized = fs::read(&cached_path).unwrap();
+    let from_bytes = unsafe { Module::deserialize(&pulley_engine, &serialized) }.unwrap();
+
+    crate::test_stack::on_guest_stack(|| {
+        for module in [&compiled, &cached, &from_bytes] {
+            let mut store = Store::new(&pulley_engine, ());
+            store.set_epoch_deadline(u64::MAX / 2);
+            let instance = Instance::new(&mut store, module, &[]).unwrap();
+            let add_and_store = instance
+                .get_typed_func::<(i32, i32), i32>(&mut store, "add_and_store")
+                .unwrap();
+            assert_eq!(add_and_store.call(&mut store, (19, 23)).unwrap(), 42);
+        }
+    });
+}

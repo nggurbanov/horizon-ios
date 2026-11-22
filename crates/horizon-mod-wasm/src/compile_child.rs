@@ -6,7 +6,8 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
 };
-#[cfg(any(unix, all(test, not(windows))))]
+// horizon-ios: child compiler handoff is bypassed on iOS (no fork/exec).
+#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
 use std::{fs, io::Write};
 
 /// Owns both the spelling and validation of private input names.
@@ -40,9 +41,10 @@ impl InputName {
 }
 
 // Production handoff is Unix-only; the non-Windows cache tests also create inputs.
-#[cfg(any(unix, all(test, not(windows))))]
+// horizon-ios: child compiler handoff is bypassed on iOS (no fork/exec).
+#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
 pub(crate) struct Input(pub(crate) PathBuf);
-#[cfg(any(unix, all(test, not(windows))))]
+#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
 impl Input {
     pub(crate) fn new(root: &Path, bytes: &[u8]) -> io::Result<Self> {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -73,7 +75,7 @@ impl Input {
         }
     }
 }
-#[cfg(any(unix, all(test, not(windows))))]
+#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
 impl Drop for Input {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
@@ -154,7 +156,8 @@ pub(crate) fn compile(input: &Path, expected_key: &str) -> wasmtime::Result<()> 
 }
 
 /// Waits only on process status; a compiler crash cannot unwind into the game.
-#[cfg(unix)]
+// horizon-ios: child compilation is bypassed on iOS (App Sandbox forbids fork/exec).
+#[cfg(all(unix, not(target_os = "ios")))]
 pub(crate) fn run(
     cache: &ModuleCache,
     bytes: &[u8],

@@ -138,6 +138,10 @@ impl ModuleCache {
         digest
             .0
             .update((horizon_guest_stack::HOST_HEADROOM as u64).to_le_bytes());
+        // horizon-ios: tag Pulley64 bytecode artifacts explicitly alongside Wasmtime's hash.
+        if engine.is_pulley() {
+            digest.0.update(b"target:pulley64");
+        }
         engine.precompile_compatibility_hash().hash(&mut digest);
         format!("{:x}", digest.0.finalize())
     }
@@ -147,7 +151,9 @@ impl ModuleCache {
         engine: &Engine,
         bytes: &[u8],
     ) -> wasmtime::Result<(Module, Source)> {
-        #[cfg(unix)]
+        // horizon-ios: iOS App Sandbox / LiveContainer forbids spawning child processes,
+        // so compile Pulley64 bytecode in-process and cache `.cwasm` to disk.
+        #[cfg(all(unix, not(target_os = "ios")))]
         let child = if cfg!(test) {
             None
         } else {
@@ -156,8 +162,8 @@ impl ModuleCache {
                 self.budget.limit,
             ))
         };
-        #[cfg(not(unix))]
-        let child = None;
+        #[cfg(any(not(unix), target_os = "ios"))]
+        let child: ChildCompile = None;
         self.load_with_child(engine, bytes, child)
     }
 
@@ -180,7 +186,7 @@ impl ModuleCache {
         )>,
     ) -> wasmtime::Result<(Module, Source)> {
         if let Some(why) = &self.disabled {
-            #[cfg(unix)]
+            #[cfg(all(unix, not(target_os = "ios")))]
             if let Some((_, timeout)) = child.as_ref() {
                 return Err(CompileUnavailable {
                     budget: crate::compile_budget::CompileBudget {
@@ -191,19 +197,19 @@ impl ModuleCache {
                 }
                 .into());
             }
-            // Only a bounded child compile reports why caching is off; Windows has none (arismoko/horizon#2901).
-            #[cfg(not(unix))]
-            let _ = why;
+            // Only a bounded child compile reports why caching is off; Windows and iOS have none.
+            #[cfg(any(not(unix), target_os = "ios"))]
+            let _ = (why, child);
             return Module::new(engine, bytes).map(|module| (module, Source::Compiled));
         }
         let path = self.entry_path(&Self::key(engine, bytes));
         if let Some(module) = self.load_cached(engine, &path) {
             return Ok((module, Source::Cached));
         }
-        // Windows caching is disabled before this point (arismoko/horizon#2901).
-        #[cfg(not(unix))]
+        // Windows caching is disabled before this point; iOS compiles in-process (no fork/exec).
+        #[cfg(any(not(unix), target_os = "ios"))]
         let _ = child;
-        #[cfg(unix)]
+        #[cfg(all(unix, not(target_os = "ios")))]
         if let Some((command, timeout)) = child {
             let result =
                 crate::compile_child::run(self, bytes, &Self::key(engine, bytes), command, timeout);
@@ -261,6 +267,32 @@ impl ModuleCache {
                 // only temp-and-rename (including corrupt-entry recovery), giving a new
                 // inode and preserving every live mapping; they never rewrite in place.
                 // Unix also rejects hard links; Windows never reaches this path.
+                // horizon-ios: verified against Wasmtime 50 `CodeMemory::publish` — Pulley
+                // artifacts carry `SH_WASMTIME_NOT_EXECUTED`, so `needs_executable = false` and
+                // Wasmtime only applies `PROT_READ` (never `PROT_EXEC`). On iOS, if file-backed
+                // mmap is rejected by a container FS, fall back to in-memory `Module::deserialize`.
+                #[cfg(target_os = "ios")]
+                {
+                    use std::io::Read;
+                    let mut file = file;
+                    match file
+                        .try_clone()
+                        .ok()
+                        .and_then(|cloned| unsafe { Module::deserialize_open_file(engine, cloned) }.ok())
+                    {
+                        Some(module) => return Some(module),
+                        None => {
+                            let mut raw = Vec::new();
+                            if file.read_to_end(&mut raw).is_ok() {
+                                match unsafe { Module::deserialize(engine, &raw) } {
+                                    Ok(module) => return Some(module),
+                                    Err(why) => self.warn_once(path, &why),
+                                }
+                            }
+                        }
+                    }
+                }
+                #[cfg(not(target_os = "ios"))]
                 match unsafe { Module::deserialize_open_file(engine, file) } {
                     Ok(module) => return Some(module),
                     Err(why) => self.warn_once(path, &why),
@@ -570,7 +602,8 @@ mod tests;
 #[path = "module_cache_gate_tests.rs"]
 mod gate_tests;
 
-#[cfg(unix)]
+// horizon-ios: child compiler executable is unused on iOS (in-process Pulley64 compilation).
+#[cfg(all(unix, not(target_os = "ios")))]
 pub(crate) fn production_command(input: &Path, key: &str) -> std::process::Command {
     let mut command = std::process::Command::new(std::env::current_exe().unwrap_or_default());
     command

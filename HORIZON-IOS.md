@@ -39,8 +39,11 @@ and displays an update banner on the Home tab when a newer version/build is avai
   Apple ID, enable "Increased Memory Limit" on the App ID with
   [GetMoreRam](https://github.com/hugeBlack/GetMoreRam) and reinstall; Sideloadly drops it.
 - **Requirements:** iOS 15 or later on an iPhone or iPad with an A12 chip or newer.
-- **No JIT / StikDebug required:** Horizon compiles ahead of time to native arm64 + Metal.
-  (WebAssembly code mods would require JIT and are not enabled on iOS yet.)
+- **No JIT / StikDebug required:** Horizon compiles ahead of time to native arm64 + Metal, and
+  WebAssembly code mods execute through Wasmtime's **Pulley64** bytecode interpreter with in-process
+  compilation, bundled `horizon-wasm-std.wasm`, and `.cwasm` disk caching (no executable JIT pages,
+  no child-process spawning). Desktop-only native Rust dylib mods (`native-mod`) are marked
+  **Desktop only** and cannot be installed on iOS.
 - **7-day signing window:** Free Apple ID installs expire after 7 days unless refreshed.
 
 ## The game files
@@ -99,6 +102,15 @@ Metal or loading game assets:
   (`Library/Application Support/horizon-autologin.plist`, mode `0600`, never inside `Documents/`)
   when sideload environments lack Keychain entitlements (`-34018`). Passwords and rendered login
   commands are never logged and never added to chat history.
+- **Mods & Packs:** Built-in 5-subtab browser and manager (**Mods**, **Resource Packs**,
+  **Shaders**, **Data Packs**, **Installed**) backed by the **Horizon Registry** (`.hmod` content
+  and Pulley64 WASM code mods, resource packs, `.hshader` / shader packs, data packs; desktop-only
+  `native-mod` packages hidden by default) and **Modrinth** (Resource Packs & per-world Data Packs
+  for Minecraft 26.3 / 1.21+). Supports live search, category filters, sorting, disk-cached icons,
+  capability & heavy-shader warnings, SHA-256 / SHA-512 verified atomic downloads, one-tap
+  **Update All**, Resource Pack priority reordering (`options.txt`), active Shader selection
+  (`horizon-graphics.txt`), per-world Data Pack toggles (`saves/<world>/datapacks.json`), and
+  mod enable/disable switches (`horizon-mods.txt`).
 - **Controls:** Live connected-input indicator (Touch / Gamepad / Keyboard+Mouse) and full Bedrock
   touch customization synchronized with in-game Touch Settings.
 - **Graphics:** Quick presets (**Battery** `6 chunks · 30 FPS`, **Balanced** `8 chunks · 60 FPS`,
@@ -177,7 +189,9 @@ App ID ([docs/forking.md](docs/forking.md)).
 |---|---|
 | App entry (64 MiB stack via `stacker`), game folder & log redirect, C ABI bridge, USB HID map | `crates/horizon-ios/src/{main,host,bridge,hid}.rs` |
 | Pure-Rust Pre-Launcher storage (`servers.dat`, `options.txt`, `horizon-player.txt`), SLP ping, world scan, resource `.zip` extractor, OTA version compare & deep-link builders | `crates/horizon-ios/src/prelauncher.rs` |
-| Native UIKit 5-tab Pre-Launcher, Server Editor, Auto-Login Keychain store, OTA Updater, Log Viewer, automatic EN/RU localization (`HorizonL10n`) | `crates/horizon-ios/objc/{HorizonPreLauncher*,HorizonServerEditor*,HorizonAutoLoginStore*,HorizonOTAUpdater*,HorizonLogViewer*,HorizonL10n*}.{h,m}` |
+| Pure-Rust Mod & Pack Browser/Manager backend (Horizon Registry + Modrinth v2 client, verified atomic downloads, icon cache, `mod-browser.json`, `horizon-mods.txt`, `options.txt`, `horizon-graphics.txt`, per-world `datapacks.json`) | `crates/horizon-ios/src/mod_manager.rs` |
+| Wasmtime Pulley64 interpreter target, iOS-safe memory/trap config, and in-process `.cwasm` module cache | `crates/horizon-mod-wasm/src/{runtime,module_cache,compile_child,lib}.rs` |
+| Native UIKit 6-tab Pre-Launcher, Mods & Packs Browser/Manager, Server Editor, Auto-Login Keychain store, OTA Updater, Log Viewer, automatic EN/RU localization (`HorizonL10n`) | `crates/horizon-ios/objc/{HorizonPreLauncher*,HorizonMods*,HorizonServerEditor*,HorizonAutoLoginStore*,HorizonOTAUpdater*,HorizonLogViewer*,HorizonL10n*}.{h,m}` |
 | Native UIKit Bedrock touch overlay, `GCController`, `GCMouse`/`GCKeyboard`, `CoreHaptics`, `CoreMotion`, quick Touch Settings, hang watchdog | `crates/horizon-ios/objc/{HorizonOverlay*,HorizonTouch*,HorizonIcons*,HorizonGamepad*,HorizonMouseKeyboard*,HorizonSettings*,HangWatchdog}.{h,m}` |
 | C ABI contract between Rust and Objective-C | `crates/horizon-ios/objc/horizon_bridge.h` |
 | Input mode state, gameplay facts, hotbar metrics, haptics/rumble & gamepad queues, auto-login command renderer, iOS auto GUI scale | `crates/horizon-client-input/src/{touch_bridge,window}.rs` |
