@@ -148,26 +148,13 @@ pub extern "C" fn horizon_ios_set_keyboard_inset_px(px: f32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn horizon_ios_send_key(hid_usage: u16, down: bool) {
     if let Some(code) = hid::key_from_hid(hid_usage) {
-        touch_bridge::push(TouchInput::Key {
-            code,
-            state: if down {
-                ElementState::Pressed
-            } else {
-                ElementState::Released
-            },
-            text: None,
-        });
+        touch_bridge::push_key(code, down);
     }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn horizon_ios_send_modifiers(mask: u8) {
-    touch_bridge::push(TouchInput::Modifiers {
-        shift: (mask & 1) != 0,
-        ctrl: (mask & 2) != 0,
-        alt: (mask & 4) != 0,
-        super_key: (mask & 8) != 0,
-    });
+    touch_bridge::push_explicit_modifiers(mask);
 }
 
 #[unsafe(no_mangle)]

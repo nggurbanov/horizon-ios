@@ -362,6 +362,11 @@ static ACTIVE_INPUT_MODE: AtomicU8 = AtomicU8::new(InputMode::Touch as u8);
 static HIDE_CROSSHAIR: AtomicBool = AtomicBool::new(false);
 static TOUCH_AUTO_JUMP: AtomicBool = AtomicBool::new(true);
 static KEYBOARD_INSET_BITS: AtomicU32 = AtomicU32::new(0);
+// horizon-ios: held modifier keys (8 bits matching USB HID 0xE0..=0xE7) tracked separately from
+// the 4-bit explicit modifier mask so touch Sneak/Sprint keys and synthetic Quick-Move/Drop
+// modifiers never clobber each other or get wiped by `Game::heal_hold_latches`.
+static KEY_MOD_BITS: AtomicU8 = AtomicU8::new(0);
+static EXPLICIT_MOD_MASK: AtomicU8 = AtomicU8::new(0);
 static TOUCH_MOVE: Mutex<Option<[f32; 2]>> = Mutex::new(None);
 static HOTBAR: Mutex<Option<HotbarMetrics>> = Mutex::new(None);
 static OVERLAY_STATE: Mutex<Option<OverlayState>> = Mutex::new(None);
@@ -370,6 +375,96 @@ static IOS_GAMEPAD_CONNS: Mutex<VecDeque<IosGamepadConnection>> = Mutex::new(Vec
 static RUMBLE_QUEUE: Mutex<VecDeque<RumbleCommand>> = Mutex::new(VecDeque::new());
 static FEEDBACK_QUEUE: Mutex<VecDeque<Feedback>> = Mutex::new(VecDeque::new());
 static WINDOW_CREATED: Mutex<Option<fn(&winit::window::Window)>> = Mutex::new(None);
+
+/// Explicit modifier bit masks matching `HORIZON_MOD_*` in `horizon_bridge.h`.
+pub const MOD_SHIFT: u8 = 1 << 0;
+pub const MOD_CTRL: u8 = 1 << 1;
+pub const MOD_ALT: u8 = 1 << 2;
+pub const MOD_SUPER: u8 = 1 << 3;
+
+fn modifier_key_bit(code: KeyCode) -> Option<u8> {
+    Some(match code {
+        KeyCode::ControlLeft => 1 << 0,
+        KeyCode::ShiftLeft => 1 << 1,
+        KeyCode::AltLeft => 1 << 2,
+        KeyCode::SuperLeft => 1 << 3,
+        KeyCode::ControlRight => 1 << 4,
+        KeyCode::ShiftRight => 1 << 5,
+        KeyCode::AltRight => 1 << 6,
+        KeyCode::SuperRight => 1 << 7,
+        _ => return None,
+    })
+}
+
+fn key_bits_to_mod_mask(key_bits: u8) -> u8 {
+    let mut mask = 0u8;
+    if (key_bits & ((1 << 1) | (1 << 5))) != 0 {
+        mask |= MOD_SHIFT;
+    }
+    if (key_bits & ((1 << 0) | (1 << 4))) != 0 {
+        mask |= MOD_CTRL;
+    }
+    if (key_bits & ((1 << 2) | (1 << 6))) != 0 {
+        mask |= MOD_ALT;
+    }
+    if (key_bits & ((1 << 3) | (1 << 7))) != 0 {
+        mask |= MOD_SUPER;
+    }
+    mask
+}
+
+fn effective_modifiers(key_bits: u8, explicit_mask: u8) -> TouchInput {
+    let mask = key_bits_to_mod_mask(key_bits) | (explicit_mask & 0x0F);
+    TouchInput::Modifiers {
+        shift: (mask & MOD_SHIFT) != 0,
+        ctrl: (mask & MOD_CTRL) != 0,
+        alt: (mask & MOD_ALT) != 0,
+        super_key: (mask & MOD_SUPER) != 0,
+    }
+}
+
+/// Pushes a physical/touch key event and keeps live `TouchInput::Modifiers` synchronized for
+/// modifier keys so `Game::heal_hold_latches` preserves touch Shift/Ctrl holds.
+///
+/// Matches native macOS/winit ordering: on press, `Modifiers` precedes `Key { Pressed }`;
+/// on release, `Key { Released }` precedes the updated `Modifiers`.
+pub fn push_key(code: KeyCode, down: bool) {
+    let key_event = TouchInput::Key {
+        code,
+        state: if down {
+            ElementState::Pressed
+        } else {
+            ElementState::Released
+        },
+        text: None,
+    };
+    match (modifier_key_bit(code), down) {
+        (Some(bit), true) => {
+            let key_bits = KEY_MOD_BITS.fetch_or(bit, Ordering::AcqRel) | bit;
+            let explicit = EXPLICIT_MOD_MASK.load(Ordering::Acquire);
+            push(effective_modifiers(key_bits, explicit));
+            push(key_event);
+        }
+        (Some(bit), false) => {
+            let key_bits = KEY_MOD_BITS.fetch_and(!bit, Ordering::AcqRel) & !bit;
+            let explicit = EXPLICIT_MOD_MASK.load(Ordering::Acquire);
+            push(key_event);
+            push(effective_modifiers(key_bits, explicit));
+        }
+        (None, _) => {
+            push(key_event);
+        }
+    }
+}
+
+/// Updates the 4-bit explicit modifier mask (e.g. inventory Quick Move Shift or hotbar Ctrl+Q)
+/// and emits the combined `TouchInput::Modifiers` without clobbering held modifier keys.
+pub fn push_explicit_modifiers(mask: u8) {
+    let explicit = mask & 0x0F;
+    EXPLICIT_MOD_MASK.store(explicit, Ordering::Release);
+    let key_bits = KEY_MOD_BITS.load(Ordering::Acquire);
+    push(effective_modifiers(key_bits, explicit));
+}
 
 /// Writes the first `limit` of a kind of event to the log (`Documents/horizon-log.txt` on iOS),
 /// so a report shows how far input got without spamming the log.
@@ -628,6 +723,38 @@ pub fn window_created(window: &winit::window::Window) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        keybinds::KeyBinds,
+        keymapping::{KeyAction, SNEAK, SPRINT, ToggleKeys},
+        modifiers::reconcile,
+    };
+    use std::collections::HashSet;
+    use winit::keyboard::ModifiersState;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_queue_and_modifiers() {
+        KEY_MOD_BITS.store(0, Ordering::SeqCst);
+        EXPLICIT_MOD_MASK.store(0, Ordering::SeqCst);
+        let _ = take();
+    }
+
+    fn mods(shift: bool, ctrl: bool, alt: bool, super_key: bool) -> TouchInput {
+        TouchInput::Modifiers {
+            shift,
+            ctrl,
+            alt,
+            super_key,
+        }
+    }
+
+    fn key(code: KeyCode, state: ElementState) -> TouchInput {
+        TouchInput::Key {
+            code,
+            state,
+            text: None,
+        }
+    }
 
     #[test]
     fn a_touch_on_the_hotbar_finds_its_slot() {
@@ -647,7 +774,8 @@ mod tests {
 
     #[test]
     fn inputs_come_out_once_in_order() {
-        let _ = take();
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
         push(TouchInput::Look { dx: 1.0, dy: 2.0 });
         push(TouchInput::Scroll { dx: 0.0, dy: -1.0 });
         push(TouchInput::TapWorld { x: 0.25, y: 0.75 });
@@ -660,6 +788,221 @@ mod tests {
             ]
         );
         assert!(take().is_empty());
+    }
+
+    #[test]
+    fn modifier_key_press_and_release_ordering() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
+
+        // Press ShiftLeft (touch sneak / fly down): Modifiers BEFORE Key Pressed.
+        push_key(KeyCode::ShiftLeft, true);
+        assert_eq!(
+            take(),
+            [
+                mods(true, false, false, false),
+                key(KeyCode::ShiftLeft, ElementState::Pressed),
+            ]
+        );
+
+        // Non-modifier keys emit only Key, never extra Modifiers.
+        push_key(KeyCode::Space, true);
+        push_key(KeyCode::Space, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::Space, ElementState::Pressed),
+                key(KeyCode::Space, ElementState::Released),
+            ]
+        );
+
+        // Release ShiftLeft: Key Released BEFORE updated Modifiers.
+        push_key(KeyCode::ShiftLeft, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::ShiftLeft, ElementState::Released),
+                mods(false, false, false, false),
+            ]
+        );
+
+        // Press and release ControlLeft (touch sprint) with the same ordering.
+        push_key(KeyCode::ControlLeft, true);
+        push_key(KeyCode::ControlLeft, false);
+        assert_eq!(
+            take(),
+            [
+                mods(false, true, false, false),
+                key(KeyCode::ControlLeft, ElementState::Pressed),
+                key(KeyCode::ControlLeft, ElementState::Released),
+                mods(false, false, false, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn overlapping_left_and_right_modifiers_keep_flag_until_both_released() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
+
+        push_key(KeyCode::ShiftLeft, true);
+        push_key(KeyCode::ShiftRight, true);
+        let _ = take();
+
+        // Releasing Left Shift keeps shift=true while Right Shift is still down.
+        push_key(KeyCode::ShiftLeft, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::ShiftLeft, ElementState::Released),
+                mods(true, false, false, false),
+            ]
+        );
+
+        // Releasing Right Shift clears shift.
+        push_key(KeyCode::ShiftRight, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::ShiftRight, ElementState::Released),
+                mods(false, false, false, false),
+            ]
+        );
+
+        // Simultaneous Shift + Ctrl + Alt + Super combine cleanly.
+        push_key(KeyCode::ShiftLeft, true);
+        push_key(KeyCode::ControlRight, true);
+        push_key(KeyCode::AltRight, true);
+        push_key(KeyCode::SuperLeft, true);
+        let _ = take();
+        push_key(KeyCode::ControlRight, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::ControlRight, ElementState::Released),
+                mods(true, false, true, true),
+            ]
+        );
+        reset_queue_and_modifiers();
+    }
+
+    #[test]
+    fn explicit_modifiers_and_key_modifiers_stay_independent() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
+
+        // Sneaking via ShiftLeft while triggering hotbar stack-drop (explicit Ctrl -> 0):
+        // clearing explicit modifiers must NOT wipe the held ShiftLeft modifier!
+        push_key(KeyCode::ShiftLeft, true);
+        let _ = take();
+        push_explicit_modifiers(MOD_CTRL);
+        push_key(KeyCode::KeyQ, true);
+        push_key(KeyCode::KeyQ, false);
+        push_explicit_modifiers(0);
+        assert_eq!(
+            take(),
+            [
+                mods(true, true, false, false),
+                key(KeyCode::KeyQ, ElementState::Pressed),
+                key(KeyCode::KeyQ, ElementState::Released),
+                mods(true, false, false, false),
+            ]
+        );
+
+        // Conversely, explicit Quick Move Shift survives a ShiftLeft key release.
+        push_explicit_modifiers(MOD_SHIFT);
+        let _ = take();
+        push_key(KeyCode::ShiftLeft, false);
+        assert_eq!(
+            take(),
+            [
+                key(KeyCode::ShiftLeft, ElementState::Released),
+                mods(true, false, false, false),
+            ]
+        );
+        push_explicit_modifiers(0);
+        assert_eq!(take(), [mods(false, false, false, false)]);
+    }
+
+    #[test]
+    fn touch_shift_and_ctrl_survive_modifier_reconcile() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
+
+        let bindings = KeyBinds::default();
+        let mut modifiers = ModifiersState::empty();
+        let mut physical = HashSet::new();
+        let mut toggles = ToggleKeys::default();
+
+        let apply = |events: Vec<TouchInput>,
+                     modifiers: &mut ModifiersState,
+                     physical: &mut HashSet<KeyCode>,
+                     toggles: &mut ToggleKeys| {
+            for ev in events {
+                match ev {
+                    TouchInput::Modifiers {
+                        shift,
+                        ctrl,
+                        alt,
+                        super_key,
+                    } => {
+                        let mut state = ModifiersState::empty();
+                        state.set(ModifiersState::SHIFT, shift);
+                        state.set(ModifiersState::CONTROL, ctrl);
+                        state.set(ModifiersState::ALT, alt);
+                        state.set(ModifiersState::SUPER, super_key);
+                        *modifiers = state;
+                        reconcile(*modifiers, physical, &bindings, toggles, [false; 2], [false; 2]);
+                    }
+                    TouchInput::Key { code, state, .. } => {
+                        let pressed = state == ElementState::Pressed;
+                        if pressed {
+                            physical.insert(code);
+                        } else {
+                            physical.remove(&code);
+                        }
+                        let slot = match code {
+                            KeyCode::ShiftLeft => Some(SNEAK),
+                            KeyCode::ControlLeft => Some(SPRINT),
+                            _ => None,
+                        };
+                        if let Some(slot) = slot {
+                            let action = if pressed {
+                                KeyAction::Press
+                            } else {
+                                KeyAction::Release
+                            };
+                            toggles.key(slot, action, false, false);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        };
+
+        push_key(KeyCode::ShiftLeft, true);
+        push_key(KeyCode::ControlLeft, true);
+        apply(take(), &mut modifiers, &mut physical, &mut toggles);
+
+        // Next frame's heal_hold_latches checks modifiers.shift_key() / control_key():
+        assert!(modifiers.shift_key());
+        assert!(modifiers.control_key());
+        assert!(physical.contains(&KeyCode::ShiftLeft));
+        assert!(physical.contains(&KeyCode::ControlLeft));
+        assert!(toggles.is_down(SNEAK));
+        assert!(toggles.is_down(SPRINT));
+
+        reconcile(modifiers, &mut physical, &bindings, &mut toggles, [false; 2], [false; 2]);
+        assert!(toggles.is_down(SNEAK));
+        assert!(toggles.is_down(SPRINT));
+
+        push_key(KeyCode::ShiftLeft, false);
+        push_key(KeyCode::ControlLeft, false);
+        apply(take(), &mut modifiers, &mut physical, &mut toggles);
+        assert!(!modifiers.shift_key());
+        assert!(!modifiers.control_key());
+        assert!(!toggles.is_down(SNEAK));
+        assert!(!toggles.is_down(SPRINT));
     }
 
     #[test]

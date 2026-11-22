@@ -74,9 +74,10 @@
         NSArray<NSNumber *> *keys = self.heldHidKeys.allObjects;
         [self.heldHidKeys removeAllObjects];
         for (NSNumber *code in keys) {
+            // Releasing modifier HID codes (0xE0..0xE7) automatically updates KEY_MOD_BITS
+            // and emits TouchInput::Modifiers inside `horizon_ios_send_key`.
             horizon_ios_send_key((uint16_t)code.unsignedShortValue, false);
         }
-        horizon_ios_send_modifiers(0);
     }
     if (self.heldMouseButtons.count > 0) {
         NSArray<NSNumber *> *btns = self.heldMouseButtons.allObjects;
@@ -85,25 +86,6 @@
             horizon_ios_send_mouse_button((uint8_t)btn.unsignedCharValue, false);
         }
     }
-}
-
-#pragma mark - Modifiers
-
-- (void)syncModifiersFromHeldKeys {
-    uint8_t mask = 0;
-    if ([self.heldHidKeys containsObject:@(0xE1)] || [self.heldHidKeys containsObject:@(0xE5)]) {
-        mask |= HORIZON_MOD_SHIFT;
-    }
-    if ([self.heldHidKeys containsObject:@(0xE0)] || [self.heldHidKeys containsObject:@(0xE4)]) {
-        mask |= HORIZON_MOD_CTRL;
-    }
-    if ([self.heldHidKeys containsObject:@(0xE2)] || [self.heldHidKeys containsObject:@(0xE6)]) {
-        mask |= HORIZON_MOD_ALT;
-    }
-    if ([self.heldHidKeys containsObject:@(0xE3)] || [self.heldHidKeys containsObject:@(0xE7)]) {
-        mask |= HORIZON_MOD_SUPER;
-    }
-    horizon_ios_send_modifiers(mask);
 }
 
 #pragma mark - GCMouse
@@ -223,10 +205,16 @@
 
         // While the user is typing directly inside our native UIKit UITextField (chat bar),
         // let UIKit handle character input cleanly and only watch Escape / Tab / Enter / Arrows.
+        // Still forward releases of keys that were already held before editing began so no key
+        // or modifier can ever get stuck.
         if ([strongSelf.delegate hardwareInputIsTextFieldEditing]) {
             BOOL isControl = (hid == HORIZON_HID_ESCAPE || hid == HORIZON_HID_TAB ||
                               hid == HORIZON_HID_UP_ARROW || hid == HORIZON_HID_DOWN_ARROW);
             if (!isControl) {
+                if (!pressed && [strongSelf.heldHidKeys containsObject:@(hid)]) {
+                    [strongSelf.heldHidKeys removeObject:@(hid)];
+                    horizon_ios_send_key(hid, false);
+                }
                 return;
             }
         }
@@ -237,7 +225,8 @@
         } else {
             [strongSelf.heldHidKeys removeObject:@(hid)];
         }
-        [strongSelf syncModifiersFromHeldKeys];
+        // `horizon_ios_send_key` tracks modifier HID codes (0xE0..0xE7) in KEY_MOD_BITS and
+        // emits TouchInput::Modifiers in native Press/Release order automatically.
         horizon_ios_send_key(hid, pressed);
     };
 }
@@ -272,7 +261,6 @@
 
         if (!gcHandlesPhysical) {
             [self.heldHidKeys addObject:@(hid)];
-            [self syncModifiersFromHeldKeys];
             horizon_ios_send_key(hid, true);
         }
 
@@ -301,7 +289,6 @@
         handled = YES;
         if (!gcHandlesPhysical && [self.heldHidKeys containsObject:@(hid)]) {
             [self.heldHidKeys removeObject:@(hid)];
-            [self syncModifiersFromHeldKeys];
             horizon_ios_send_key(hid, false);
         }
     }

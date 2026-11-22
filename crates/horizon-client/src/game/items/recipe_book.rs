@@ -43,6 +43,50 @@ pub(super) fn escape_closes_book(width: f32, open: bool) -> bool {
     open && width < NARROW
 }
 
+/// Which vanilla recipe book, if any, belongs to the currently open screen.
+fn active_book_for(
+    screen: Screen,
+    station_open: bool,
+    mount_active: bool,
+    native_screen: bool,
+    has_container: bool,
+    container_kind: Option<&BlockEntity>,
+    remote_menu: Option<&str>,
+) -> Option<BookType> {
+    if screen != Screen::Inventory || station_open || mount_active || native_screen {
+        return None;
+    }
+    match container_kind {
+        None if !has_container
+            && remote_menu.is_none_or(|menu| menu == "minecraft:crafting") =>
+        {
+            Some(BookType::Crafting)
+        }
+        Some(BlockEntity::Furnace(f)) => Some(match f.kind {
+            FurnaceKind::Furnace => BookType::Furnace,
+            FurnaceKind::BlastFurnace => BookType::BlastFurnace,
+            FurnaceKind::Smoker => BookType::Smoker,
+        }),
+        _ => None,
+    }
+}
+
+/// The menu kind, menu-slot offset, and game-slot range whose contents a remote
+/// recipe book counts alongside the player's inventory (`book_available`).
+fn remote_book_menu_spec(
+    book: BookType,
+    craft_size: usize,
+) -> (horizon_client::menu::Kind, usize, std::ops::Range<usize>) {
+    use horizon_client::menu::Kind;
+    match book {
+        BookType::Crafting if craft_size == 3 => (Kind::Crafting, 1, 100..109),
+        BookType::Crafting => (Kind::Inventory, 1, 100..104),
+        BookType::Furnace => (Kind::Furnace("smelting"), 0, 300..303),
+        BookType::BlastFurnace => (Kind::Furnace("blasting"), 0, 300..303),
+        BookType::Smoker => (Kind::Furnace("smoking"), 0, 300..303),
+    }
+}
+
 /// A ghost recipe slot: the items it cycles through.
 struct Ghost {
     slot: usize,
@@ -201,29 +245,15 @@ impl Game<'_> {
 
     /// The vanilla book the open screen has, if any.
     pub(super) fn active_book(&self) -> Option<BookType> {
-        if self.screen != Screen::Inventory || self.station.is_some() {
-            return None;
-        }
-        // Explicitly assigned mod panels use their own identity and flags.
-        if self.mount_active() || self.native_screen_height().is_some() {
-            return None;
-        }
-        match self.container_kind() {
-            None if self.container.is_none()
-                && self
-                    .remote
-                    .as_ref()
-                    .is_none_or(|r| r.menu.as_ref().is_none()) =>
-            {
-                Some(BookType::Crafting)
-            }
-            Some(BlockEntity::Furnace(f)) => Some(match f.kind {
-                FurnaceKind::Furnace => BookType::Furnace,
-                FurnaceKind::BlastFurnace => BookType::BlastFurnace,
-                FurnaceKind::Smoker => BookType::Smoker,
-            }),
-            _ => None,
-        }
+        active_book_for(
+            self.screen,
+            self.station.is_some(),
+            self.mount_active(),
+            self.native_screen_height().is_some(),
+            self.container.is_some(),
+            self.container_kind(),
+            self.remote_menu_type(),
+        )
     }
     fn book_open(&self, book: BookType) -> bool {
         self.level.recipe_book.open[book.index()]
@@ -368,19 +398,15 @@ impl Game<'_> {
     }
     /// The items the book counts (`RecipeBookComponent.updateStackedContents`):
     /// the inventory and the menu's crafting slots, as the menu engine counts them.
-    fn book_available(&mut self, _book: BookType) -> Stacked {
+    fn book_available(&mut self, book: BookType) -> Stacked {
         if self.remote.is_some() {
             // A server's menu: the slots it last sent, counted the same way.
-            use horizon_client::menu::{Env, Kind, Menu};
-            let table = self.craft_size == 3;
-            let grid: Vec<_> = (0..self.craft_size * self.craft_size)
-                .map(|k| self.slot_mut(100 + k).clone())
+            use horizon_client::menu::{Env, Menu};
+            let (kind, menu_offset, game_slots) = remote_book_menu_spec(book, self.craft_size);
+            let extra: Vec<_> = game_slots
+                .map(|slot| self.slot_mut(slot).clone())
                 .collect();
-            let mut menu = Menu::new(if table {
-                Kind::Crafting
-            } else {
-                Kind::Inventory
-            });
+            let mut menu = Menu::new(kind);
             let env = Env {
                 crafting_remainder: Some(self),
                 player: None,
@@ -403,8 +429,8 @@ impl Game<'_> {
             for i in 0..36 {
                 menu.set_player_item(i, self.inventory[i].clone());
             }
-            for (k, stack) in grid.into_iter().enumerate() {
-                menu.set_slot(&env, 1 + k, stack);
+            for (k, stack) in extra.into_iter().enumerate() {
+                menu.set_slot(&env, menu_offset + k, stack);
             }
             return menu.stacked_contents(&env);
         }
@@ -2354,6 +2380,22 @@ mod request_generation_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use horizon_client::containers::Furnace;
+
+    fn furnace_entity(kind: FurnaceKind) -> BlockEntity {
+        BlockEntity::Furnace(Furnace {
+            kind,
+            items: [None, None, None],
+            lit_remaining: 0,
+            lit_total: 0,
+            cooking_timer: 0,
+            cooking_total: 0,
+            speed: 1.0,
+            recipes_used: std::collections::HashMap::new(),
+        })
+    }
+
     /// `RecipeBookComponent.keyPressed`: Escape closes a narrow window's open
     /// book (`!isOffsetNextToMainGUI`), not the container; a wide window's
     /// book leaves Escape to the container.
@@ -2362,6 +2404,146 @@ mod tests {
         assert!(super::escape_closes_book(super::NARROW - 1.0, true));
         assert!(!super::escape_closes_book(super::NARROW, true));
         assert!(!super::escape_closes_book(super::NARROW - 1.0, false));
+    }
+
+    #[test]
+    fn active_book_supports_remote_inventory_crafting_table_and_furnaces() {
+        // Remote player inventory (r.menu == None).
+        assert_eq!(
+            active_book_for(Screen::Inventory, false, false, false, false, None, None),
+            Some(BookType::Crafting)
+        );
+        // Remote crafting table (r.menu == Some((id, "minecraft:crafting")), container == None).
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                false,
+                false,
+                false,
+                false,
+                None,
+                Some("minecraft:crafting"),
+            ),
+            Some(BookType::Crafting)
+        );
+        // Creative inventory tabs never show the recipe book (whereas opening a crafting table
+        // in Creative uses Screen::Inventory above).
+        assert_eq!(
+            active_book_for(Screen::Creative, false, false, false, false, None, None),
+            None
+        );
+        // Remote Furnace / BlastFurnace / Smoker.
+        for (kind, menu, expected) in [
+            (FurnaceKind::Furnace, "minecraft:furnace", BookType::Furnace),
+            (
+                FurnaceKind::BlastFurnace,
+                "minecraft:blast_furnace",
+                BookType::BlastFurnace,
+            ),
+            (FurnaceKind::Smoker, "minecraft:smoker", BookType::Smoker),
+        ] {
+            let entity = furnace_entity(kind);
+            assert_eq!(
+                active_book_for(
+                    Screen::Inventory,
+                    false,
+                    false,
+                    false,
+                    true,
+                    Some(&entity),
+                    Some(menu),
+                ),
+                Some(expected)
+            );
+        }
+        // Other remote containers (e.g. chest / generic_9x3) have no vanilla recipe book.
+        let chest = BlockEntity::Chest(vec![None; 27]);
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                false,
+                false,
+                false,
+                true,
+                Some(&chest),
+                Some("minecraft:generic_9x3"),
+            ),
+            None
+        );
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                false,
+                false,
+                false,
+                false,
+                None,
+                Some("minecraft:generic_9x3"),
+            ),
+            None
+        );
+        // Workstations, mounts, and native mod screens suppress the vanilla book.
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                true,
+                false,
+                false,
+                false,
+                None,
+                Some("minecraft:crafting"),
+            ),
+            None
+        );
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                false,
+                true,
+                false,
+                false,
+                None,
+                Some("minecraft:crafting"),
+            ),
+            None
+        );
+        assert_eq!(
+            active_book_for(
+                Screen::Inventory,
+                false,
+                false,
+                true,
+                false,
+                None,
+                Some("minecraft:crafting"),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn remote_book_menu_spec_covers_crafting_and_furnaces() {
+        use horizon_client::menu::Kind;
+        assert_eq!(
+            remote_book_menu_spec(BookType::Crafting, 2),
+            (Kind::Inventory, 1, 100..104)
+        );
+        assert_eq!(
+            remote_book_menu_spec(BookType::Crafting, 3),
+            (Kind::Crafting, 1, 100..109)
+        );
+        assert_eq!(
+            remote_book_menu_spec(BookType::Furnace, 2),
+            (Kind::Furnace("smelting"), 0, 300..303)
+        );
+        assert_eq!(
+            remote_book_menu_spec(BookType::BlastFurnace, 2),
+            (Kind::Furnace("blasting"), 0, 300..303)
+        );
+        assert_eq!(
+            remote_book_menu_spec(BookType::Smoker, 2),
+            (Kind::Furnace("smoking"), 0, 300..303)
+        );
     }
 }
 

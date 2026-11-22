@@ -121,7 +121,9 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 @property (nonatomic, assign) BOOL invSplitStarted;
 @property (nonatomic, assign) BOOL invSplitTriggered;
 @property (nonatomic, assign) BOOL invMouseDown;
+@property (nonatomic, assign) BOOL invQuickMoveModSent;
 @property (nonatomic, assign) uint8_t dpadMask;
+@property (nonatomic, assign) BOOL dpadCenterIsJump;
 @end
 
 @implementation HorizonFingerRecord
@@ -166,6 +168,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 @property (nonatomic, assign) HorizonOverlayState gameState;
 @property (nonatomic, assign) BOOL hasGameState;
 @property (nonatomic, assign) BOOL lastFlying;
+@property (nonatomic, assign) BOOL lastRiding;
 @property (nonatomic, assign) BOOL lastTextFieldFocused;
 @property (nonatomic, assign) BOOL lastChatOpen;
 @property (nonatomic, assign) uint64_t lastChatRevision;
@@ -724,6 +727,17 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
     if (!showInv) {
         self.invSplitBar.hidden = YES;
+        BOOL hadQuickMoveMod = NO;
+        for (UITouch *t in [self.activeTouches.keyEnumerator allObjects]) {
+            HorizonFingerRecord *r = [self.activeTouches objectForKey:t];
+            if (r != nil && r.invQuickMoveModSent) {
+                r.invQuickMoveModSent = NO;
+                hadQuickMoveMod = YES;
+            }
+        }
+        if (hadQuickMoveMod || self.invQuickMoveEnabled) {
+            horizon_ios_send_modifiers(0);
+        }
         self.invQuickMoveEnabled = NO;
         self.invDropEnabled = NO;
         self.invQuickMoveButton.activeHighlight = NO;
@@ -745,13 +759,15 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         self.attackButton.hidden = !isCrosshair;
         self.useButton.hidden    = !isCrosshair;
 
-        // Sneak button visibility: hidden in D-Pad ground mode (where D-Pad center is Sneak/Jump),
-        // shown in Joystick modes and whenever flying/swimming vertical pair is active.
-        BOOL showSeparateSneak = !isDpad || flying || inWater;
-        self.sneakButton.hidden = !showSeparateSneak;
-
-        // Jump button visibility: when riding a non-jumping mount (boat/pig/minecart), hide Jump.
-        self.jumpButton.hidden = riding && !vehJumps && !flying;
+        // Sneak & Jump button visibility:
+        // - In D-Pad ground mode, the D-Pad center carries Sneak (or Jump when swapped) and the
+        //   right-side button carries the opposite control.
+        // - In Joystick modes and whenever flying/swimming vertical pair is active, both buttons
+        //   appear on the right side (except Jump hides while riding a non-jumping mount).
+        BOOL dpadGround  = isDpad && !flying && !inWater;
+        BOOL dpadSwapped = dpadGround && s.swapJumpSneak;
+        self.sneakButton.hidden = dpadGround && !dpadSwapped;
+        self.jumpButton.hidden  = dpadSwapped || (riding && !vehJumps && !flying);
     }
 }
 
@@ -793,14 +809,23 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
     BOOL wasFlying = self.lastFlying;
     BOOL nowFlying = (st.facts_flags & HORIZON_FACT_FLYING) != 0;
+    BOOL wasRiding = self.lastRiding;
+    BOOL nowRiding = (st.facts_flags & HORIZON_FACT_RIDING) != 0;
+    BOOL nowHoldOnlySneak = nowFlying
+        || ((st.facts_flags & HORIZON_FACT_IN_WATER) != 0)
+        || nowRiding;
     BOOL wasGrabbing = self.gameState.grabbing;
     self.gameState = st;
     self.hasGameState = YES;
     self.lastFlying = nowFlying;
+    self.lastRiding = nowRiding;
 
-    // CRITICAL SAFETY: when landing from creative flight, guarantee Shift is released so player
-    // never lands stuck crouching!
-    if (wasFlying && !nowFlying) {
+    // CRITICAL SAFETY:
+    // - Landing from flight or finishing a dismount guarantees Shift is released so the player
+    //   never lands stuck crouching.
+    // - Entering flight, water, or mounting a vehicle while ground toggle-sneak is active cancels
+    //   the toggle immediately so it never plunges the player downward or dismounts them.
+    if ((wasFlying && !nowFlying) || (wasRiding && !nowRiding) || (self.sneakToggled && nowHoldOnlySneak)) {
         [self forceReleaseSneak];
     }
     if (wasGrabbing && !st.grabbing) {
@@ -877,13 +902,22 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         self.sneakButton.activeHighlight = sneaking || self.sneakToggled;
     }
 
-    // D-Pad center icon (respecting swapJumpSneak)
+    // D-Pad center icon (respecting swapJumpSneak and contextual hold-only states)
     if (HorizonSettings.shared.swapJumpSneak && !flying && !inWater) {
         self.dpadView.centerIcon = HorizonIconJump;
         self.dpadView.centerHighlighted = NO;
+    } else if (riding) {
+        self.dpadView.centerIcon = HorizonIconDismount;
+        self.dpadView.centerHighlighted = NO;
+    } else if (flying) {
+        self.dpadView.centerIcon = HorizonIconFlyDown;
+        self.dpadView.centerHighlighted = NO;
+    } else if (inWater) {
+        self.dpadView.centerIcon = HorizonIconSwimDown;
+        self.dpadView.centerHighlighted = NO;
     } else {
-        self.dpadView.centerIcon = riding ? HorizonIconDismount : HorizonIconSneak;
-        self.dpadView.centerHighlighted = !riding && (sneaking || self.sneakToggled);
+        self.dpadView.centerIcon = HorizonIconSneak;
+        self.dpadView.centerHighlighted = sneaking || self.sneakToggled;
     }
 
     // Attack button icon (Sword on entity, Pickaxe on block/default)
@@ -1175,6 +1209,9 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 - (void)setTouchSprint:(BOOL)on {
     if (self.sprintHeldByTouch == on) return;
     self.sprintHeldByTouch = on;
+    self.joystickView.sprinting = ((self.gameState.facts_flags & HORIZON_FACT_SPRINTING) != 0)
+                                || self.sprintHeldByTouch
+                                || self.sprintLocked;
     horizon_ios_send_key(HORIZON_HID_LEFT_CTRL, on);
 }
 
@@ -1196,9 +1233,14 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
                  || ((f & HORIZON_FACT_RIDING) != 0);
     if (holdOnly) {
         // Flying / Swimming / Riding: ALWAYS hold-only, NEVER latch!
+        BOOL shouldSend = down || self.sneakHeldByTouch || self.sneakToggled;
         self.sneakToggled = NO;
         self.sneakHeldByTouch = down;
-        horizon_ios_send_key(HORIZON_HID_LEFT_SHIFT, down);
+        self.sneakButton.activeHighlight = NO;
+        self.dpadView.centerHighlighted = NO;
+        if (shouldSend) {
+            horizon_ios_send_key(HORIZON_HID_LEFT_SHIFT, down);
+        }
     } else if (down) {
         // On ground: authentic Bedrock toggle Sneak!
         self.sneakToggled = !self.sneakToggled;
@@ -1206,6 +1248,13 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         self.sneakButton.activeHighlight = self.sneakToggled;
         self.dpadView.centerHighlighted = self.sneakToggled;
         horizon_ios_send_key(HORIZON_HID_LEFT_SHIFT, self.sneakToggled);
+    } else if (!self.sneakToggled && self.sneakHeldByTouch) {
+        // Landed or exited water/vehicle while holding Fly Down / Swim Down / Dismount:
+        // guarantee Shift is released when the finger lifts so it never sticks!
+        self.sneakHeldByTouch = NO;
+        self.sneakButton.activeHighlight = NO;
+        self.dpadView.centerHighlighted = NO;
+        horizon_ios_send_key(HORIZON_HID_LEFT_SHIFT, false);
     }
 }
 
@@ -1235,6 +1284,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     horizon_ios_set_touch_move(false, 0.0f, 0.0f);
     [self setTouchSprint:NO];
     [self forceReleaseSneak];
+    horizon_ios_send_modifiers(0);
     if (self.jumpPhysicallyDown) {
         self.jumpReleaseToken++;
         self.jumpPhysicallyDown = NO;
@@ -1521,6 +1571,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     if (self.invQuickMoveEnabled) {
         [self playLightTick];
         horizon_ios_send_modifiers(HORIZON_MOD_SHIFT);
+        rec.invQuickMoveModSent = YES;
         horizon_ios_send_mouse_button(0, true);
         rec.invMouseDown = YES;
         return;
@@ -1791,12 +1842,12 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
         case HorizonFingerRoleDpad: {
             if (rec.dpadMask & (1u << 4)) {
-                if (HorizonSettings.shared.swapJumpSneak &&
-                    !(self.gameState.facts_flags & (HORIZON_FACT_FLYING | HORIZON_FACT_IN_WATER))) {
+                if (rec.dpadCenterIsJump) {
                     [self sendJumpUpWithMinHoldFrom:rec.startTime];
                 } else {
                     [self handleSneakPressDown:NO];
                 }
+                rec.dpadCenterIsJump = NO;
             }
             self.dpadView.upPressed = NO;
             self.dpadView.downPressed = NO;
@@ -1838,9 +1889,6 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
             self.invSplitBar.hidden = YES;
             if (rec.invMouseDown) {
                 horizon_ios_send_mouse_button(0, false);
-                if (self.invQuickMoveEnabled) {
-                    horizon_ios_send_modifiers(0);
-                }
                 rec.invMouseDown = NO;
             } else if (!cancelled && !rec.invSplitTriggered && !self.invDropEnabled) {
                 if (rec.invSplitStarted) {
@@ -1852,6 +1900,10 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
                     horizon_ios_send_mouse_button(0, true);
                     horizon_ios_send_mouse_button(0, false);
                 }
+            }
+            if (rec.invQuickMoveModSent) {
+                rec.invQuickMoveModSent = NO;
+                horizon_ios_send_modifiers(0);
             }
             break;
         }
@@ -1909,22 +1961,29 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     uint8_t mask = [self.dpadView hitMaskForPoint:local];
     uint8_t prev = rec.dpadMask;
 
-    // Center button handling (Sneak or Jump if swapped)
+    // Center button handling (Sneak or Jump if swapped). Remember which action was pressed
+    // so flying/water transitions mid-hold always release the exact key that went down.
     BOOL prevCenter = (prev & (1u << 4)) != 0;
     BOOL nowCenter  = (mask & (1u << 4)) != 0;
     if (nowCenter != prevCenter) {
         self.dpadView.centerPressed = nowCenter;
-        if (HorizonSettings.shared.swapJumpSneak &&
-            !(self.gameState.facts_flags & (HORIZON_FACT_FLYING | HORIZON_FACT_IN_WATER))) {
-            if (nowCenter) {
-                [self playLightTick];
+        if (nowCenter) {
+            BOOL centerIsJump = HorizonSettings.shared.swapJumpSneak &&
+                !(self.gameState.facts_flags & (HORIZON_FACT_FLYING | HORIZON_FACT_IN_WATER));
+            rec.dpadCenterIsJump = centerIsJump;
+            [self playLightTick];
+            if (centerIsJump) {
                 [self sendJumpDown];
             } else {
-                [self sendJumpUpWithMinHoldFrom:rec.startTime];
+                [self handleSneakPressDown:YES];
             }
         } else {
-            if (nowCenter) [self playLightTick];
-            [self handleSneakPressDown:nowCenter];
+            if (rec.dpadCenterIsJump) {
+                [self sendJumpUpWithMinHoldFrom:rec.startTime];
+            } else {
+                [self handleSneakPressDown:NO];
+            }
+            rec.dpadCenterIsJump = NO;
         }
     }
 
@@ -1971,11 +2030,15 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     HorizonFingerRecord *b = [self.activeTouches objectForKey:all[1]];
     if (a == nil || b == nil) return;
 
-    // Release any pending single-finger press before scrolling
+    // Release any pending single-finger press (and explicit Quick Move Shift) before scrolling
     for (HorizonFingerRecord *r in @[a, b]) {
         if (r.invMouseDown) {
             horizon_ios_send_mouse_button(0, false);
             r.invMouseDown = NO;
+        }
+        if (r.invQuickMoveModSent) {
+            r.invQuickMoveModSent = NO;
+            horizon_ios_send_modifiers(0);
         }
         r.invSplitStarted = NO;
         r.dragged = YES;
