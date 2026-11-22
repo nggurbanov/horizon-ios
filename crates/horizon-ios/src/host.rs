@@ -1,8 +1,8 @@
-//! Where the game keeps its files on iOS, and the touch overlay's attachment to its window.
+//! Where the game keeps its files on iOS, and the overlay's attachment to winit's UIView.
 use std::path::PathBuf;
 
 unsafe extern "C" {
-    /// objc/HorizonSurfaceViewController.m: puts the touch controls over winit's view.
+    /// objc/HorizonOverlayViewController.m: puts the native Bedrock overlay over winit's view.
     fn horizon_ios_attach_overlay(ui_view: *mut std::ffi::c_void);
     fn dup2(from: i32, to: i32) -> i32;
 }
@@ -15,14 +15,13 @@ unsafe extern "C" {
 ///   a player can find them to report a problem.
 /// - The game's standard output and errors go to `Documents/horizon-log.txt`; the previous
 ///   launch's to `horizon-log.previous.txt`. iOS shows them nowhere else.
-/// - Amethyst's control layouts go in `Documents/controlmap` (`AME_HOME`).
 pub fn prepare() {
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
     let documents = home.join("Documents");
     let horizon_home = documents.join("horizon");
     let _ = std::fs::create_dir_all(&documents);
     capture_output(&documents);
-    for dir in [documents.join("resources"), documents.join("controlmap"), horizon_home.clone()] {
+    for dir in [documents.join("resources"), horizon_home.clone()] {
         if let Err(error) = std::fs::create_dir_all(&dir) {
             eprintln!("horizon-ios: can't create {}: {error}", dir.display());
         }
@@ -31,7 +30,6 @@ pub fn prepare() {
     // SAFETY: called first thing in `main`, before the game or any library starts a thread.
     unsafe {
         std::env::set_var("HORIZON_HOME", &horizon_home);
-        std::env::set_var("AME_HOME", &documents);
         std::env::set_var("RUST_BACKTRACE", "1");
     }
     if let Err(error) = std::env::set_current_dir(&documents) {

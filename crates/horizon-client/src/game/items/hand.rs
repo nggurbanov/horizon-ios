@@ -337,6 +337,13 @@ impl Game<'_> {
     pub(super) fn release_tick_targets(&mut self) {
         self.tick_hit.set(None);
         self.tick_mob = None;
+        // horizon-ios: expire one-shot Tap-to-Interact screen aim once the tick has consumed it.
+        if let Some(ta) = self.touch_state.aim
+            && !ta.hold
+            && self.ticks >= ta.expire_after_tick
+        {
+            self.touch_state.aim = None;
+        }
     }
     /// `Minecraft.startAttack` on an entity: a main-hand item with an
     /// `attack_range` attacks only a hit inside it.
@@ -365,8 +372,9 @@ impl Game<'_> {
         &self,
         range: &serde_json::Value,
     ) -> Option<Option<(usize, f64, [f64; 3])>> {
-        let eye = v3(self.eye_position()?);
-        let look = v3(super::view_vector(self.yaw, self.pitch));
+        let (eye_arr, dir_arr) = self.aim()?;
+        let eye = v3(eye_arr);
+        let look = v3(dir_arr);
         let reach = attack_reach(range, self.creative);
         let camera = self.remote_camera_id();
         let boxes: Vec<(usize, Aabb)> = (self.mobs.iter().enumerate())

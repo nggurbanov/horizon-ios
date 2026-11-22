@@ -359,20 +359,25 @@ impl Game<'_> {
     }
 }
 
-/// horizon-ios: a touch control's input as the window or device event a keyboard or mouse makes.
+/// horizon-ios: an iOS overlay, keyboard, or mouse input translated into game events.
 #[cfg(target_os = "ios")]
 pub(super) enum TouchEvent {
     Window(WindowEvent),
     Device(DeviceEvent),
+    Modifiers(winit::keyboard::ModifiersState),
+    SetChatText(String),
+    TapWorld { x: f32, y: f32 },
+    HoldWorld { x: f32, y: f32, active: bool },
+    MoveWorldHold { x: f32, y: f32 },
 }
 
-/// horizon-ios: the touch controls' input since the last pass (`touch_bridge`), as the events a
-/// keyboard and mouse make, so it goes through the same handlers.
+/// horizon-ios: the touch/keyboard/mouse bridge input since the last pass (`touch_bridge`), as
+/// the events Horizon's window, device, chat, and Tap-to-Interact handlers consume.
 #[cfg(target_os = "ios")]
 pub(super) fn touch_events() -> Vec<TouchEvent> {
     use horizon_client_input::touch_bridge::{self, TouchInput};
     use winit::event::{KeyEvent, MouseScrollDelta, TouchPhase};
-    use winit::keyboard::{Key, KeyLocation, NativeKey, NativeKeyCode};
+    use winit::keyboard::{Key, KeyLocation, ModifiersState, NativeKey, NativeKeyCode};
     let device_id = DeviceId::dummy();
     let key = |event: KeyEvent| {
         TouchEvent::Window(WindowEvent::KeyboardInput {
@@ -386,9 +391,10 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
         match input {
             TouchInput::Key { code, state, text } => {
                 let logical = named_key(code).map(Key::Named).unwrap_or_else(|| {
-                    text.as_deref().map_or(Key::Unidentified(NativeKey::Unidentified), |t| {
-                        Key::Character(t.into())
-                    })
+                    text.as_deref().map_or(
+                        Key::Unidentified(NativeKey::Unidentified),
+                        |t| Key::Character(t.into()),
+                    )
                 });
                 let text = text.filter(|_| state == ElementState::Pressed);
                 events.push(key(KeyEvent::synthetic(
@@ -399,6 +405,19 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                     state,
                     false,
                 )));
+            }
+            TouchInput::Modifiers {
+                shift,
+                ctrl,
+                alt,
+                super_key,
+            } => {
+                let mut state = ModifiersState::empty();
+                state.set(ModifiersState::SHIFT, shift);
+                state.set(ModifiersState::CONTROL, ctrl);
+                state.set(ModifiersState::ALT, alt);
+                state.set(ModifiersState::SUPER, super_key);
+                events.push(TouchEvent::Modifiers(state));
             }
             TouchInput::Text(text) => {
                 for state in [ElementState::Pressed, ElementState::Released] {
@@ -412,6 +431,7 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                     )));
                 }
             }
+            TouchInput::SetChatText(text) => events.push(TouchEvent::SetChatText(text)),
             TouchInput::CursorTo { x, y } => {
                 events.push(TouchEvent::Window(WindowEvent::CursorMoved {
                     device_id,
@@ -426,7 +446,9 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                 }))
             }
             TouchInput::Look { dx, dy } => {
-                events.push(TouchEvent::Device(DeviceEvent::MouseMotion { delta: (dx, dy) }))
+                events.push(TouchEvent::Device(DeviceEvent::MouseMotion {
+                    delta: (dx, dy),
+                }))
             }
             TouchInput::Scroll { dx, dy } => {
                 events.push(TouchEvent::Window(WindowEvent::MouseWheel {
@@ -435,6 +457,11 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                     phase: TouchPhase::Moved,
                 }))
             }
+            TouchInput::TapWorld { x, y } => events.push(TouchEvent::TapWorld { x, y }),
+            TouchInput::HoldWorld { x, y, active } => {
+                events.push(TouchEvent::HoldWorld { x, y, active })
+            }
+            TouchInput::MoveWorldHold { x, y } => events.push(TouchEvent::MoveWorldHold { x, y }),
         }
     }
     events
@@ -442,18 +469,102 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
 
 #[cfg(target_os = "ios")]
 impl Game<'_> {
+    fn ios_screen_kind(&self, playing: bool) -> horizon_client_input::touch_bridge::ScreenKind {
+        use horizon_client_input::touch_bridge::ScreenKind;
+        if self.title.is_some()
+            || self.dialog_open()
+            || self.sign_edit.is_some()
+            || self.book.is_some()
+            || self.link_prompt.is_some()
+            || self.command_prompt.is_some()
+            || self.code_of_conduct.is_some()
+        {
+            return ScreenKind::Menu;
+        }
+        if playing {
+            return ScreenKind::Playing;
+        }
+        match self.screen {
+            Screen::Playing => ScreenKind::Menu,
+            Screen::Chat => ScreenKind::Chat,
+            Screen::Creative => ScreenKind::Creative,
+            Screen::Inventory => {
+                if self.container.is_some() || self.station.is_some() {
+                    ScreenKind::Container
+                } else {
+                    ScreenKind::Inventory
+                }
+            }
+            _ => ScreenKind::Menu,
+        }
+    }
+
     fn take_touch_input(&mut self, event_loop: &ActiveEventLoop) {
-        let playing = self.captured && self.screen == Screen::Playing;
-        horizon_client_input::touch_bridge::set_grabbing(playing);
-        let hotbar = self
-            .renderer
+        use horizon_client::actions::Action;
+        use horizon_client_input::touch_bridge::{
+            self, HotbarMetrics, InputMode, OverlayState, TouchFacts,
+        };
+        let playing = self.captured
+            && self.screen == Screen::Playing
+            && self.title.is_none()
+            && !self.dialog_open()
+            && self.sign_edit.is_none()
+            && self.book.is_none();
+        if !playing {
+            self.touch_state.aim = None;
+            self.touch_state.hold_uses_item = false;
+        }
+        let screen_kind = self.ios_screen_kind(playing);
+        let text_field_focused = self.text_field_focused();
+        let chat_open = self.screen == Screen::Chat && self.title.is_none();
+        let live_chat = self
+            .ui
+            .chat_screen
             .as_ref()
-            .filter(|_| playing && self.title.is_none())
-            .map(|r| {
-                let size = [r.config.width, r.config.height];
-                (size, HudBatch::new(size, self.settings.gui_scale_inputs()).scale)
-            });
-        horizon_client_input::touch_bridge::set_hotbar(hotbar);
+            .filter(|_| chat_open)
+            .map(|s| s.value())
+            .unwrap_or("");
+        if live_chat != self.touch_state.chat_text {
+            self.touch_state.chat_text = live_chat.to_owned();
+            self.touch_state.chat_revision = self.touch_state.chat_revision.wrapping_add(1);
+        }
+        let guide_facts = if playing && self.player.is_some() {
+            self.cached_guide_facts()
+        } else {
+            Default::default()
+        };
+        let sneaking = self.keys.held(Action::Sneak);
+        let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
+        let facts = TouchFacts::from_guide(&guide_facts, sneaking, sprinting, self.creative);
+        let (gui_scale, hotbar) = self.renderer.as_ref().map_or((1.0, None), |r| {
+            let size = [r.config.width, r.config.height];
+            let scale = HudBatch::new(size, self.settings.gui_scale_inputs()).scale;
+            let metrics = (playing && !self.spectator() && !self.ui.hide_gui)
+                .then(|| HotbarMetrics::from_view(size, scale, self.selected as u8));
+            (scale, metrics)
+        });
+        let mining_progress = self
+            .mining
+            .as_ref()
+            .map_or(0.0, |m| m.progress.clamp(0.0, 1.0));
+        touch_bridge::set_overlay_state(OverlayState {
+            grabbing: playing,
+            screen_kind,
+            text_field_focused,
+            chat_open,
+            chat_text: self.touch_state.chat_text.clone(),
+            chat_revision: self.touch_state.chat_revision,
+            hotbar,
+            facts,
+            mining_progress,
+            carrying_item: self.carried.is_some(),
+            gui_scale,
+        });
+        // Keep console mode cleanly yielded whenever Touch or Keyboard+Mouse owns input.
+        if touch_bridge::active_input_mode() != InputMode::Gamepad && self.pad.in_use {
+            self.pad_yield_input(event_loop);
+            self.pad.keyboard_took_over = true;
+        }
         let Some(id) = self.window.as_ref().map(|w| w.id()) else {
             return;
         };
@@ -462,6 +573,89 @@ impl Game<'_> {
                 TouchEvent::Window(event) => self.window_event(event_loop, id, event),
                 TouchEvent::Device(event) => {
                     self.device_event(event_loop, DeviceId::dummy(), event)
+                }
+                TouchEvent::Modifiers(state) => self.update_modifiers(state),
+                TouchEvent::SetChatText(text) => self.ios_set_chat_text(&text),
+                TouchEvent::TapWorld { x, y } => {
+                    if self.captured
+                        && self.screen == Screen::Playing
+                        && self.title.is_none()
+                        && !self.dialog_open()
+                    {
+                        self.touch_state.aim = Some(super::TouchAim {
+                            point: [x, y],
+                            hold: false,
+                            expire_after_tick: self.ticks,
+                        });
+                        self.tick_hit.set(None);
+                        self.tick_mob = None;
+                        let tap_facts = self.pad_guide_facts();
+                        let button = super::classify_world_tap(&tap_facts);
+                        for state in [ElementState::Pressed, ElementState::Released] {
+                            self.window_event(
+                                event_loop,
+                                id,
+                                WindowEvent::MouseInput {
+                                    device_id: DeviceId::dummy(),
+                                    state,
+                                    button,
+                                },
+                            );
+                        }
+                    }
+                }
+                TouchEvent::HoldWorld { x, y, active } => {
+                    if active {
+                        if self.captured
+                            && self.screen == Screen::Playing
+                            && self.title.is_none()
+                            && !self.dialog_open()
+                        {
+                            self.touch_state.aim = Some(super::TouchAim {
+                                point: [x, y],
+                                hold: true,
+                                expire_after_tick: self.ticks,
+                            });
+                            self.tick_hit.set(None);
+                            self.tick_mob = None;
+                            let hold_facts = self.pad_guide_facts();
+                            let button = super::classify_world_hold(&hold_facts);
+                            self.touch_state.hold_uses_item = button == MouseButton::Right;
+                            self.window_event(
+                                event_loop,
+                                id,
+                                WindowEvent::MouseInput {
+                                    device_id: DeviceId::dummy(),
+                                    state: ElementState::Pressed,
+                                    button,
+                                },
+                            );
+                        }
+                    } else {
+                        let button = if self.touch_state.hold_uses_item {
+                            MouseButton::Right
+                        } else {
+                            MouseButton::Left
+                        };
+                        self.touch_state.hold_uses_item = false;
+                        self.window_event(
+                            event_loop,
+                            id,
+                            WindowEvent::MouseInput {
+                                device_id: DeviceId::dummy(),
+                                state: ElementState::Released,
+                                button,
+                            },
+                        );
+                        self.touch_state.aim = None;
+                    }
+                }
+                TouchEvent::MoveWorldHold { x, y } => {
+                    if let Some(ta) = self.touch_state.aim.as_mut()
+                        && ta.hold
+                    {
+                        ta.point = [x, y];
+                    }
                 }
             }
         }
@@ -809,5 +1003,105 @@ mod tests {
             assert_eq!(held_focus(InputOrigin::User, false, &event), None);
             assert!(!locks_out(InputOrigin::User, true, &event));
         }
+    }
+
+    #[test]
+    fn screen_ray_direction_matches_camera_projection_round_trip() {
+        let eye = [12.5, 65.62, -4.25];
+        for (yaw, pitch, fov, aspect) in [
+            (0.0_f32, 0.0_f32, 70.0_f32, 16.0 / 9.0),
+            (45.0, -25.0, 90.0, 2556.0 / 1179.0),
+            (-135.0, 40.0, 60.0, 4.0 / 3.0),
+        ] {
+            let proj = glam::Mat4::perspective_rh(fov.to_radians(), aspect, 256.0, 0.05)
+                .to_cols_array();
+            for point in [[0.5_f32, 0.5], [0.2, 0.3], [0.85, 0.75], [0.1, 0.9]] {
+                let dir = super::super::screen_ray_direction(yaw, pitch, fov, aspect, point);
+                let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+                assert!((len - 1.0).abs() < 1e-6);
+                let world_pt = [eye[0] + dir[0] * 4.0, eye[1] + dir[1] * 4.0, eye[2] + dir[2] * 4.0];
+                let ndc = horizon_client::camera::project_point(&proj, eye, yaw, pitch, world_pt)
+                    .expect("projected screen point");
+                let want_x = point[0] * 2.0 - 1.0;
+                let want_y = 1.0 - point[1] * 2.0;
+                assert!(
+                    (ndc[0] - want_x).abs() < 1e-3 && (ndc[1] - want_y).abs() < 1e-3,
+                    "yaw={yaw} pitch={pitch} point={point:?}: got {ndc:?} vs [{want_x}, {want_y}]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tap_and_hold_classifiers_follow_bedrock_tap_to_interact_rules() {
+        use horizon_client::gameplay_guide::{Facts, Target, Verb};
+        // Entity with interact verb (villager trade, horse ride, animal feed) -> Right.
+        let villager = Facts {
+            target: Target::Entity {
+                attackable: true,
+                takes: Some(Verb::Trade),
+            },
+            ..Facts::default()
+        };
+        assert_eq!(super::super::classify_world_tap(&villager), MouseButton::Right);
+        // Hostile mob with no interact verb -> Left (attack).
+        let zombie = Facts {
+            target: Target::Entity {
+                attackable: true,
+                takes: None,
+            },
+            ..Facts::default()
+        };
+        assert_eq!(super::super::classify_world_tap(&zombie), MouseButton::Left);
+        // Chest or door -> Right (open/use).
+        let chest = Facts {
+            target: Target::Block {
+                breakable: true,
+                takes: Some(Verb::Open),
+            },
+            ..Facts::default()
+        };
+        assert_eq!(super::super::classify_world_tap(&chest), MouseButton::Right);
+        // Stone while holding a placeable block -> Right on tap, Left (mine) on hold!
+        let stone_with_block = Facts {
+            target: Target::Block {
+                breakable: true,
+                takes: None,
+            },
+            item_use: Some(Verb::Place),
+            ..Facts::default()
+        };
+        assert_eq!(
+            super::super::classify_world_tap(&stone_with_block),
+            MouseButton::Right
+        );
+        assert_eq!(
+            super::super::classify_world_hold(&stone_with_block),
+            MouseButton::Left
+        );
+        // Stone while holding a pickaxe -> Left on tap and Left on hold.
+        let stone_with_pick = Facts {
+            target: Target::Block {
+                breakable: true,
+                takes: None,
+            },
+            item_use: None,
+            ..Facts::default()
+        };
+        assert_eq!(
+            super::super::classify_world_tap(&stone_with_pick),
+            MouseButton::Left
+        );
+        assert_eq!(
+            super::super::classify_world_hold(&stone_with_pick),
+            MouseButton::Left
+        );
+        // Air while holding food/bow/shield -> Right on hold!
+        let eating = Facts {
+            target: Target::None,
+            item_use: Some(Verb::Eat),
+            ..Facts::default()
+        };
+        assert_eq!(super::super::classify_world_hold(&eating), MouseButton::Right);
     }
 }

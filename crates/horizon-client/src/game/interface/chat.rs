@@ -1349,6 +1349,22 @@ impl Game<'_> {
             screen.type_text(&m, &c, text);
         }
     }
+    /// horizon-ios: replaces the open chat input buffer from the native iOS top chat `UITextField`
+    /// and updates command suggestions in place without bouncing the text back to iOS.
+    #[cfg(target_os = "ios")]
+    pub(super) fn ios_set_chat_text(&mut self, text: &str) {
+        let m = Measure(&self.gui.atlas.font);
+        let c = Commands {
+            dispatcher: chat_tree(&self.remote),
+            registries: &self.ui.registries,
+        };
+        if let Some(screen) = self.ui.chat_screen.as_mut() {
+            if screen.value() != text {
+                screen.suggest_command(&m, &c, text);
+            }
+            self.touch_state.chat_text = screen.value().to_owned();
+        }
+    }
     /// ChatScreen.handleChatInput: the message comes in normalized
     /// (`normalizeChatMessage`: trimmed, whitespace runs collapsed, cut to the
     /// 256 UTF-16 units the packet holds), into history, then as a command or
@@ -1697,6 +1713,16 @@ impl Game<'_> {
         let (home_x, home_y) = (0, height - 40);
         let (mut x, mut y) = (home_x, home_y);
         self.native_customize_chat_overlay(width, height, focused, &mut x, &mut y);
+        // horizon-ios: lift chat messages cleanly above the iOS keyboard when chat is open.
+        #[cfg(target_os = "ios")]
+        if focused {
+            let kb_px = horizon_client_input::touch_bridge::keyboard_inset_px();
+            if kb_px > 0.0 && batch.scale > 0.0 {
+                let kb_gui = (kb_px / batch.scale).ceil() as i32;
+                let max_shift = (height - 84).max(0);
+                y -= kb_gui.min(max_shift);
+            }
+        }
         let offset = [(x - home_x) as f32, (y - home_y) as f32];
         self.ui
             .chat
@@ -1757,6 +1783,22 @@ impl Game<'_> {
         });
         // The build made the box at this size (`ChatScreen.resize`).
         let m = Measure(&self.gui.atlas.font);
+        // horizon-ios: keep command suggestions and usage lines above the iOS on-screen keyboard.
+        #[cfg(target_os = "ios")]
+        {
+            let kb_px = horizon_client_input::touch_bridge::keyboard_inset_px();
+            let kb_gui = if kb_px > 0.0 && batch.scale > 0.0 {
+                (kb_px / batch.scale).ceil() as i32
+            } else {
+                0
+            };
+            let target_h = (batch.height as i32 - kb_gui).max(72);
+            let c = Commands {
+                dispatcher: chat_tree(&self.remote),
+                registries: &self.ui.registries,
+            };
+            screen.resize(&m, &c, batch.width as i32, target_h);
+        }
         // Options.getBackgroundColor(Integer.MIN_VALUE).
         let background = if self.settings.file.bool("backgroundForChatOnly") {
             i32::MIN

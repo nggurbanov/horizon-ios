@@ -1189,6 +1189,8 @@ struct Game<'a> {
     last_input: Instant,
     /// Controllers (Horizon's own).
     pad: pad::Pads,
+    /// horizon-ios: screen-space Tap-to-Interact aiming and chat bar sync state.
+    touch_state: TouchState,
     frames: u64,
     /// The glint clock and options, read once per frame (game/interface/item_draw.rs).
     glint_frame: horizon_client::item_render::GlintFrame,
@@ -2249,6 +2251,122 @@ fn view_vector(yaw: f32, pitch: f32) -> [f64; 3] {
 fn level_can_have_weather(sky_light: bool, has_ceiling: bool, is_end: bool) -> bool {
     sky_light && !has_ceiling && !is_end
 }
+/// horizon-ios: screen-space Tap-to-Interact aim target.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct TouchAim {
+    pub(super) point: [f32; 2],
+    pub(super) hold: bool,
+    pub(super) expire_after_tick: u64,
+}
+
+/// horizon-ios: runtime state for Tap-to-Interact aiming and native chat bar synchronization.
+#[derive(Default)]
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub(super) struct TouchState {
+    pub(super) aim: Option<TouchAim>,
+    pub(super) hold_uses_item: bool,
+    pub(super) chat_text: String,
+    pub(super) chat_revision: u64,
+}
+
+/// horizon-ios: world-space unit ray through normalized surface coordinates `point` (`0..1`,
+/// origin top-left, y down) matching `horizon_client::camera::view_matrix` and `perspective_rh`.
+pub(super) fn screen_ray_direction(
+    yaw: f32,
+    pitch: f32,
+    fov_degrees: f32,
+    aspect: f32,
+    point: [f32; 2],
+) -> [f64; 3] {
+    let fov = fov_degrees.clamp(1.0, 179.0).to_radians();
+    let aspect = if aspect.is_finite() && aspect > 0.01 {
+        aspect
+    } else {
+        16.0 / 9.0
+    };
+    let t = (f64::from(fov) * 0.5).tan();
+    let ndc_x = f64::from(point[0].clamp(0.0, 1.0)) * 2.0 - 1.0;
+    let ndc_y = 1.0 - f64::from(point[1].clamp(0.0, 1.0)) * 2.0;
+    let cam = glam::DVec3::new(ndc_x * f64::from(aspect) * t, ndc_y * t, -1.0).normalize();
+    let cols = horizon_client::camera::view_matrix(yaw, pitch).to_cols_array_2d();
+    // `view_matrix` is an orthonormal rotation; its inverse is its transpose.
+    let world = glam::DVec3::new(
+        f64::from(cols[0][0]) * cam.x
+            + f64::from(cols[0][1]) * cam.y
+            + f64::from(cols[0][2]) * cam.z,
+        f64::from(cols[1][0]) * cam.x
+            + f64::from(cols[1][1]) * cam.y
+            + f64::from(cols[1][2]) * cam.z,
+        f64::from(cols[2][0]) * cam.x
+            + f64::from(cols[2][1]) * cam.y
+            + f64::from(cols[2][2]) * cam.z,
+    )
+    .normalize();
+    [world.x, world.y, world.z]
+}
+
+/// horizon-ios: chooses Attack (Left) vs Interact/Place/Use (Right) for a short Tap-to-Interact tap.
+#[cfg_attr(not(any(target_os = "ios", test)), allow(dead_code))]
+pub(super) fn classify_world_tap(facts: &horizon_client::gameplay_guide::Facts) -> MouseButton {
+    use horizon_client::gameplay_guide::{Target, Verb};
+    match facts.target {
+        Target::Entity { takes: Some(_), .. } => MouseButton::Right,
+        Target::Entity {
+            attackable: true, ..
+        } => MouseButton::Left,
+        Target::Block { takes: Some(_), .. } => MouseButton::Right,
+        Target::Block { .. } => {
+            if matches!(
+                facts.item_use,
+                Some(
+                    Verb::Place
+                        | Verb::Use
+                        | Verb::Open
+                        | Verb::Fish
+                        | Verb::Throw
+                        | Verb::Boost
+                        | Verb::Equip
+                )
+            ) {
+                MouseButton::Right
+            } else {
+                MouseButton::Left
+            }
+        }
+        Target::Entity { .. } | Target::None => {
+            if facts.item_use.is_some() {
+                MouseButton::Right
+            } else {
+                MouseButton::Left
+            }
+        }
+    }
+}
+
+/// horizon-ios: chooses Mine (Left) vs continuous Item Use (Right) for a Tap-to-Interact hold.
+#[cfg_attr(not(any(target_os = "ios", test)), allow(dead_code))]
+pub(super) fn classify_world_hold(facts: &horizon_client::gameplay_guide::Facts) -> MouseButton {
+    use horizon_client::gameplay_guide::{Target, Verb};
+    if matches!(facts.target, Target::Block { breakable: true, .. }) {
+        return MouseButton::Left;
+    }
+    if matches!(
+        facts.item_use,
+        Some(
+            Verb::Eat
+                | Verb::Drink
+                | Verb::Shoot
+                | Verb::Load
+                | Verb::Throw
+                | Verb::Raise
+                | Verb::Zoom
+        )
+    ) {
+        return MouseButton::Right;
+    }
+    MouseButton::Left
+}
+
 /// `Camera.setRotation` (`rotationYXZ(π - yaw, -pitch, 0)`) for the player's
 /// view, turned round in third-person front view (`Camera.update`).
 fn camera_rotation(
@@ -2340,7 +2458,22 @@ impl Game<'_> {
             let eye = [x, y + f64::from(e.eye_height), z];
             return Some((eye, pick_view_vector(e.y_rot, e.x_rot)));
         }
-        Some((self.eye_position()?, pick_view_vector(self.yaw, self.pitch)))
+        let eye = self.eye_position()?;
+        // horizon-ios: Tap-to-Interact casts the targeting ray through the tapped screen point.
+        if let Some(ta) = self.touch_state.aim
+            && self.screen == Screen::Playing
+            && self.title.is_none()
+        {
+            let aspect = self.renderer.as_ref().map_or(16.0 / 9.0, |r| {
+                r.config.width as f32 / r.config.height.max(1) as f32
+            });
+            let fov = self.fov_degrees(1.0, eye);
+            return Some((
+                eye,
+                screen_ray_direction(self.yaw, self.pitch, fov, aspect, ta.point),
+            ));
+        }
+        Some((eye, pick_view_vector(self.yaw, self.pitch)))
     }
     /// `Player.blockInteractionRange`: the block pick's and mining's reach.
     fn reach(&self) -> f64 {
@@ -2557,7 +2690,23 @@ impl Game<'_> {
         player.mobility_restricted = blind;
         player.yaw = self.yaw;
         player.pitch = self.pitch;
-        player.auto_jump_enabled = self.settings.auto_jump;
+        // horizon-ios: Bedrock touch auto-jump applies only in Touch mode; Gamepad and
+        // Keyboard+Mouse modes keep the player's vanilla `options.txt` autoJump setting.
+        #[cfg(target_os = "ios")]
+        {
+            player.auto_jump_enabled =
+                if horizon_client_input::touch_bridge::active_input_mode()
+                    == horizon_client_input::touch_bridge::InputMode::Touch
+                {
+                    horizon_client_input::touch_bridge::touch_auto_jump()
+                } else {
+                    self.settings.auto_jump
+                };
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            player.auto_jump_enabled = self.settings.auto_jump;
+        }
         player.item_use_speed = item_use_speed;
         player.item_use_slows_sprint = item_use_slows_sprint;
         player.respiration = respiration;
@@ -4969,10 +5118,18 @@ impl Game<'_> {
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
             // Hud.extractCrosshair: a spectator only sees it over something to open.
+            // horizon-ios: hide the central crosshair in Touch Tap-to-Interact schemes.
+            #[cfg(target_os = "ios")]
+            let ios_hide_crosshair = horizon_client_input::touch_bridge::active_input_mode()
+                == horizon_client_input::touch_bridge::InputMode::Touch
+                && horizon_client_input::touch_bridge::hide_crosshair();
+            #[cfg(not(target_os = "ios"))]
+            let ios_hide_crosshair = false;
             if self.camera_type.is_first_person()
                 && (!spectator || self.spectator_crosshair())
                 && !self.debug_crosshair()
                 && !self.overlay_holds_view()
+                && !ios_hide_crosshair
             {
                 let attack = (indicator == 1).then_some(strength);
                 let full = attack.is_some_and(|a| {
@@ -10742,6 +10899,7 @@ impl<'a> Game<'a> {
             previous: now,
             last_input: now,
             pad: Default::default(),
+            touch_state: Default::default(),
             frames: 0,
             glint_frame: Default::default(),
             kept_block_entities: Default::default(),

@@ -1,4 +1,4 @@
-//! Compiles the touch overlay (objc/, adapted from Amethyst-iOS) into the iOS app.
+//! Compiles the native iOS Bedrock touch/gamepad/keyboard-mouse overlay (`objc/`) into the app.
 use std::path::{Path, PathBuf};
 
 fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -24,27 +24,27 @@ fn main() {
     let mut files = Vec::new();
     sources(&objc, &mut files);
     files.sort();
+    for file in &files {
+        println!("cargo:rerun-if-changed={}", file.display());
+    }
     cc::Build::new()
         .files(&files)
         .include(&objc)
         .flag("-fobjc-arc")
         .flag("-fmodules")
         .flag("-Wno-deprecated-declarations")
-        .flag("-Wno-unused-parameter")
-        .flag("-Wno-unused-variable")
-        .flag("-Wno-unused-function")
-        .warnings(false)
         .compile("horizon_ios_overlay");
     for framework in [
         "UIKit",
         "Foundation",
         "CoreMotion",
         "GameController",
+        "CoreHaptics",
         "QuartzCore",
         "CoreGraphics",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
-    // The overlay's Objective-C categories must load though nothing in Rust names them.
+    // Load Objective-C categories cleanly even when not referenced directly from Rust.
     println!("cargo:rustc-link-arg=-ObjC");
 }

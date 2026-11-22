@@ -468,7 +468,23 @@ impl ApplicationHandler for App {
                 // horizon-ios: the title menu takes touches while the game loads.
                 #[cfg(target_os = "ios")]
                 if let Some(id) = loading.window.as_ref().map(|w| w.id()) {
-                    horizon_client_input::touch_bridge::set_grabbing(false);
+                    use horizon_client_input::touch_bridge::{self, OverlayState, ScreenKind};
+                    let scale = loading
+                        .renderer
+                        .as_ref()
+                        .map_or(1.0, |r| {
+                            HudBatch::new(
+                                [r.config.width, r.config.height],
+                                loading.settings.gui_scale_inputs(),
+                            )
+                            .scale
+                        });
+                    touch_bridge::set_overlay_state(OverlayState {
+                        grabbing: false,
+                        screen_kind: ScreenKind::Loading,
+                        gui_scale: scale,
+                        ..OverlayState::default()
+                    });
                     for event in super::window_handler::touch_events() {
                         if let super::window_handler::TouchEvent::Window(event) = event {
                             loading.window_event(event_loop, id, event);

@@ -1,39 +1,247 @@
-// horizon-ios: the contract between the touch overlay (Objective-C, adapted from Amethyst-iOS)
-// and the game (Rust, crates/horizon-ios/src/bridge.rs). Keep both sides in step.
-//
-// Everything here runs on the main thread.
+// horizon-ios: C ABI between the native Objective-C overlay (`objc/`) and Rust (`src/bridge.rs`).
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-// ---- Implemented in Rust (src/bridge.rs) ----
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-// A GLFW key (GLFW_KEY_*, glfw_keycodes.h) pressed (action 1), released (0) or repeated (2).
-// `mods` is GLFW's modifier mask. Unknown keys are ignored.
-void CallbackBridge_nativeSendKey(int key, int scancode, int action, int mods);
-// A character typed with no key (the on-screen keyboard). Returns true when it was taken.
-bool CallbackBridge_nativeSendChar(uint32_t codepoint);
-bool CallbackBridge_nativeSendCharMods(uint32_t codepoint, int mods);
-// A GLFW mouse button (0 left, 1 right, 2 middle) pressed (1) or released (0).
-void CallbackBridge_nativeSendMouseButton(int button, int action, int mods);
-// The pointer, in physical pixels of the game view, as in Amethyst:
-// ACTION_DOWN / ACTION_UP / ACTION_MOVE (0, 1, 2): an absolute position.
-// ACTION_MOVE_MOTION (3): a relative move; while grabbing it turns the view.
-void CallbackBridge_nativeSendCursorPos(int event, double x, double y);
-// Wheel offsets in lines, GLFW's sign (positive y scrolls up).
-void CallbackBridge_nativeSendScroll(double xoffset, double yoffset);
-// The view's size in physical pixels. Informational: the game reads its own window size.
-void CallbackBridge_nativeSendScreenSize(int width, int height);
-// Whether the game holds the pointer (playing, no screen open): touches then turn the view,
-// as Amethyst's `isGrabbing`.
-bool horizon_ios_is_grabbing(void);
-// The GLFW key of the hotbar slot (GLFW_KEY_1 ... GLFW_KEY_9) under a point of the view in
-// physical pixels, or -1 when the point is not on the hotbar or no world is shown.
-int callback_SurfaceViewController_touchHotbar(double x, double y);
+// Input modes (HorizonInputMode)
+enum {
+    HORIZON_INPUT_MODE_TOUCH = 0,
+    HORIZON_INPUT_MODE_GAMEPAD = 1,
+    HORIZON_INPUT_MODE_KEYBOARD_MOUSE = 2,
+};
 
-// ---- Implemented in Objective-C (the overlay) ----
+// Screen categories
+enum {
+    HORIZON_SCREEN_MENU = 0,
+    HORIZON_SCREEN_PLAYING = 1,
+    HORIZON_SCREEN_INVENTORY = 2,
+    HORIZON_SCREEN_CREATIVE = 3,
+    HORIZON_SCREEN_CONTAINER = 4,
+    HORIZON_SCREEN_CHAT = 5,
+    HORIZON_SCREEN_LOADING = 6,
+};
 
-// Called once for each game window the game creates, on the main thread, with winit's UIView
-// (the Metal view the game draws into). The overlay puts its touch controls over it.
+// Gamepad glyph styles
+enum {
+    HORIZON_GLYPH_AUTO = 0,
+    HORIZON_GLYPH_XBOX = 1,
+    HORIZON_GLYPH_PLAYSTATION = 2,
+    HORIZON_GLYPH_NINTENDO = 3,
+};
+
+// Attack target kind
+enum {
+    HORIZON_ATTACK_NONE = 0,
+    HORIZON_ATTACK_BREAK = 1,
+    HORIZON_ATTACK_ENTITY = 2,
+    HORIZON_ATTACK_SPECTATE = 3,
+};
+
+// Contextual use verb (matches gameplay_guide::Verb)
+enum {
+    HORIZON_VERB_NONE = 0,
+    HORIZON_VERB_USE = 1,
+    HORIZON_VERB_OPEN = 2,
+    HORIZON_VERB_RIDE = 3,
+    HORIZON_VERB_TRADE = 4,
+    HORIZON_VERB_FEED = 5,
+    HORIZON_VERB_PLACE = 6,
+    HORIZON_VERB_EAT = 7,
+    HORIZON_VERB_DRINK = 8,
+    HORIZON_VERB_SHOOT = 9,
+    HORIZON_VERB_LOAD = 10,
+    HORIZON_VERB_THROW = 11,
+    HORIZON_VERB_RAISE = 12,
+    HORIZON_VERB_EQUIP = 13,
+    HORIZON_VERB_FISH = 14,
+    HORIZON_VERB_ZOOM = 15,
+    HORIZON_VERB_BOOST = 16,
+};
+
+// Active item-in-use state
+enum {
+    HORIZON_ACTIVE_NONE = 0,
+    HORIZON_ACTIVE_SHOOT = 1,
+    HORIZON_ACTIVE_THROW = 2,
+    HORIZON_ACTIVE_STOP = 3,
+};
+
+// Gameplay feedback haptics
+enum {
+    HORIZON_FEEDBACK_BLOCK_BROKEN = 1,
+    HORIZON_FEEDBACK_EXPLOSION = 2,
+    HORIZON_FEEDBACK_TOTEM = 3,
+    HORIZON_FEEDBACK_ITEM_STACK_SPLIT = 4,
+};
+
+// TouchFacts bit flags
+enum {
+    HORIZON_FACT_FLYING         = 1u << 0,
+    HORIZON_FACT_MAY_FLY        = 1u << 1,
+    HORIZON_FACT_IN_WATER       = 1u << 2,
+    HORIZON_FACT_ON_GROUND      = 1u << 3,
+    HORIZON_FACT_GLIDING        = 1u << 4,
+    HORIZON_FACT_CAN_GLIDE      = 1u << 5,
+    HORIZON_FACT_RIDING         = 1u << 6,
+    HORIZON_FACT_VEHICLE_JUMPS  = 1u << 7,
+    HORIZON_FACT_SNEAKING       = 1u << 8,
+    HORIZON_FACT_SPRINTING      = 1u << 9,
+    HORIZON_FACT_SPECTATOR      = 1u << 10,
+    HORIZON_FACT_CREATIVE       = 1u << 11,
+    HORIZON_FACT_HANDS_BUSY     = 1u << 12,
+    HORIZON_FACT_CAN_SPRINT     = 1u << 13,
+    HORIZON_FACT_MAIN_HAND_ITEM = 1u << 14,
+    HORIZON_FACT_OFF_HAND_ITEM  = 1u << 15,
+    HORIZON_FACT_TARGET_BLOCK   = 1u << 16,
+    HORIZON_FACT_TARGET_ENTITY  = 1u << 17,
+};
+
+// Gamepad button bits (exact order of horizon_client_input::gamepad::Button)
+enum {
+    HORIZON_PAD_SOUTH         = 1u << 0,
+    HORIZON_PAD_EAST          = 1u << 1,
+    HORIZON_PAD_WEST          = 1u << 2,
+    HORIZON_PAD_NORTH         = 1u << 3,
+    HORIZON_PAD_LEFT_BUMPER   = 1u << 4,
+    HORIZON_PAD_RIGHT_BUMPER  = 1u << 5,
+    HORIZON_PAD_LEFT_TRIGGER  = 1u << 6,
+    HORIZON_PAD_RIGHT_TRIGGER = 1u << 7,
+    HORIZON_PAD_SELECT        = 1u << 8,
+    HORIZON_PAD_START         = 1u << 9,
+    HORIZON_PAD_LEFT_STICK    = 1u << 10,
+    HORIZON_PAD_RIGHT_STICK   = 1u << 11,
+    HORIZON_PAD_DPAD_UP       = 1u << 12,
+    HORIZON_PAD_DPAD_DOWN     = 1u << 13,
+    HORIZON_PAD_DPAD_LEFT     = 1u << 14,
+    HORIZON_PAD_DPAD_RIGHT    = 1u << 15,
+};
+
+// Keyboard modifier bits
+enum {
+    HORIZON_MOD_SHIFT = 1u << 0,
+    HORIZON_MOD_CTRL  = 1u << 1,
+    HORIZON_MOD_ALT   = 1u << 2,
+    HORIZON_MOD_SUPER = 1u << 3,
+};
+
+// Common USB HID usage constants used by touch actions
+enum {
+    HORIZON_HID_A           = 0x04,
+    HORIZON_HID_D           = 0x07,
+    HORIZON_HID_E           = 0x08,
+    HORIZON_HID_F           = 0x09,
+    HORIZON_HID_Q           = 0x14,
+    HORIZON_HID_S           = 0x16,
+    HORIZON_HID_T           = 0x17,
+    HORIZON_HID_W           = 0x1A,
+    HORIZON_HID_1           = 0x1E,
+    HORIZON_HID_ENTER       = 0x28,
+    HORIZON_HID_ESCAPE      = 0x29,
+    HORIZON_HID_BACKSPACE   = 0x2A,
+    HORIZON_HID_TAB         = 0x2B,
+    HORIZON_HID_SPACE       = 0x2C,
+    HORIZON_HID_SLASH       = 0x38,
+    HORIZON_HID_F3          = 0x3C,
+    HORIZON_HID_F5          = 0x3E,
+    HORIZON_HID_RIGHT_ARROW = 0x4F,
+    HORIZON_HID_LEFT_ARROW  = 0x50,
+    HORIZON_HID_DOWN_ARROW  = 0x51,
+    HORIZON_HID_UP_ARROW    = 0x52,
+    HORIZON_HID_LEFT_CTRL   = 0xE0,
+    HORIZON_HID_LEFT_SHIFT  = 0xE1,
+};
+
+typedef struct {
+    bool grabbing;
+    uint8_t screen_kind;
+    bool text_field_focused;
+    bool chat_open;
+    uint64_t chat_revision;
+    bool has_hotbar;
+    uint8_t selected_slot;
+    float hotbar_x;
+    float hotbar_y;
+    float hotbar_w;
+    float hotbar_h;
+    float gui_scale;
+    float mining_progress;
+    bool carrying_item;
+    uint32_t facts_flags;
+    uint8_t attack_kind;
+    uint8_t use_verb;
+    uint8_t active_use;
+} HorizonOverlayState;
+
+typedef struct {
+    bool connected;
+    uint8_t glyph_style;
+    uint32_t buttons;
+    float left_x;
+    float left_y;
+    float right_x;
+    float right_y;
+    float left_trigger;
+    float right_trigger;
+    float peak_left_x;
+    float peak_left_y;
+    float peak_right_x;
+    float peak_right_y;
+    const char *name;
+} HorizonGamepadState;
+
+typedef struct {
+    float strong;
+    float weak;
+    float left_trigger;
+    float right_trigger;
+    uint32_t millis;
+} HorizonRumbleEvent;
+
+typedef struct {
+    uint8_t kind;
+    float intensity;
+} HorizonFeedbackEvent;
+
+// Obj-C -> Rust
+void horizon_ios_set_input_mode(uint8_t mode);
+void horizon_ios_set_touch_move(bool active, float left, float forward);
+void horizon_ios_set_hide_crosshair(bool hide);
+void horizon_ios_set_touch_auto_jump(bool enabled);
+void horizon_ios_set_keyboard_inset_px(float px);
+
+void horizon_ios_send_key(uint16_t hid_usage, bool down);
+void horizon_ios_send_modifiers(uint8_t mask);
+void horizon_ios_send_text(const char *utf8);
+void horizon_ios_send_chat_text(const char *utf8);
+void horizon_ios_send_cursor(double x, double y);
+void horizon_ios_send_mouse_button(uint8_t button, bool down);
+void horizon_ios_send_look(double dx, double dy);
+void horizon_ios_send_scroll(float dx, float dy);
+void horizon_ios_tap_world(float nx, float ny);
+void horizon_ios_hold_world(float nx, float ny, bool active);
+void horizon_ios_move_world_hold(float nx, float ny);
+
+void horizon_ios_gamepad_update(const HorizonGamepadState *state);
+void horizon_ios_gamepad_connection(bool connected, uint8_t glyph_style);
+
+// Rust -> Obj-C polling
+void horizon_ios_poll_state(HorizonOverlayState *out_state, char *chat_buf, size_t chat_buf_len);
+bool horizon_ios_poll_rumble(HorizonRumbleEvent *out_rumble);
+bool horizon_ios_poll_feedback(HorizonFeedbackEvent *out_feedback);
+
+// HangWatchdog.m
+void horizon_ios_heartbeat(void);
+void horizon_ios_start_watchdog(void);
+
+// Overlay entry point (called from Rust host.rs)
 void horizon_ios_attach_overlay(void *ui_view);
+
+#ifdef __cplusplus
+}
+#endif

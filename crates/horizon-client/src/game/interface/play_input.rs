@@ -477,7 +477,18 @@ impl Game<'_> {
 impl Game<'_> {
     /// The analog move vector (`[left, forward]`, -1..1) while a device moves the player.
     pub(super) fn input_move(&self) -> Option<[f32; 2]> {
-        self.pad_move()
+        // horizon-ios: read analog touch joystick movement separately from `Pads`, so touching the
+        // joystick never triggers console mode (`Pads::in_use`).
+        self.pad_move().or_else(|| {
+            let playing = self.screen == Screen::Playing
+                && self.title.is_none()
+                && !self.dialog_open()
+                && horizon_client_input::touch_bridge::active_input_mode()
+                    == horizon_client_input::touch_bridge::InputMode::Touch;
+            playing
+                .then(horizon_client_input::touch_bridge::touch_move)
+                .flatten()
+        })
     }
 
     /// Whether a device holds the key mapping named `mapping` (`key.use`).
@@ -521,6 +532,14 @@ impl Game<'_> {
     /// Something happened to the player that a device may let them feel.
     pub(super) fn input_feedback(&mut self, event: horizon_client::input_source::Feedback) {
         self.pad_rumble(event.into());
+        // horizon-ios: forward gameplay haptic events (`BlockBroken`, `Explosion`, `Totem`,
+        // `ItemStackSplit`) to UIImpactFeedbackGenerator / CoreHaptics when playing with Touch.
+        #[cfg(target_os = "ios")]
+        if horizon_client_input::touch_bridge::active_input_mode()
+            == horizon_client_input::touch_bridge::InputMode::Touch
+        {
+            horizon_client_input::touch_bridge::push_feedback(event);
+        }
     }
 
     /// Whether `key` is held, a movement key by the analog move vector too: as the keys it holds

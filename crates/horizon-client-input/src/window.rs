@@ -6,14 +6,37 @@
 /// `Window.calculateScale`: the largest scale that leaves at least 320x240
 /// GUI pixels, capped by `max_scale` (0 = automatic); an odd result is bumped
 /// to even when unicode is enforced.
+///
+/// horizon-ios: on iPhone-height framebuffers with automatic GUI scale (`max_scale == 0`), allow
+/// down to 224 GUI px tall (a 6-row double chest is 222 GUI px) so inventory slots and the hotbar
+/// stay comfortably finger-sized without clipping any container screen.
 pub fn calculate_scale(framebuffer: [i32; 2], max_scale: i32, enforce_unicode: bool) -> i32 {
+    #[cfg(target_os = "ios")]
+    let min_height = if max_scale == 0 && framebuffer[1] <= 1400 {
+        224
+    } else {
+        240
+    };
+    #[cfg(not(target_os = "ios"))]
+    let min_height = 240;
+    calculate_scale_with_min_height(framebuffer, max_scale, enforce_unicode, min_height)
+}
+
+/// horizon-ios: `calculate_scale` with an explicit minimum GUI height (240 in vanilla; 224 on
+/// phone-sized iOS screens in automatic mode).
+pub fn calculate_scale_with_min_height(
+    framebuffer: [i32; 2],
+    max_scale: i32,
+    enforce_unicode: bool,
+    min_height: i32,
+) -> i32 {
     let [width, height] = framebuffer;
     let mut scale = 1;
     while scale != max_scale
         && scale < width
         && scale < height
         && width / (scale + 1) >= 320
-        && height / (scale + 1) >= 240
+        && height / (scale + 1) >= min_height
     {
         scale += 1;
     }
@@ -783,6 +806,18 @@ mod tests {
                 size: [384, 216]
             }
         );
+    }
+
+    #[test]
+    fn ios_phone_min_height_keeps_inventory_slots_large_without_clipping_double_chests() {
+        // iPhone 15/16 Pro landscape (2556x1179 @3x): vanilla 240 picks scale 4 (24pt slots);
+        // 224 picks scale 5 (30pt slots, 236 GUI px tall >= 222 GUI px double chest).
+        assert_eq!(calculate_scale_with_min_height([2556, 1179], 0, false, 224), 5);
+        assert_eq!(calculate_scale_with_min_height([2532, 1170], 0, false, 224), 5);
+        assert_eq!(calculate_scale_with_min_height([2796, 1290], 0, false, 224), 5);
+        assert_eq!(calculate_scale_with_min_height([1334, 750], 0, false, 224), 3);
+        // Explicit user choice is always respected.
+        assert_eq!(calculate_scale_with_min_height([2556, 1179], 3, false, 224), 3);
     }
 
     #[test]

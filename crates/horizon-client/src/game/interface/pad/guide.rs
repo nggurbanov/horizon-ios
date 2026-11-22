@@ -72,6 +72,19 @@ impl Game<'_> {
                 .any_enabled(self.debug, self.reduced_debug_info())
     }
 
+    /// horizon-ios: once-per-tick cached `gameplay_guide::Facts` shared by the gamepad guide and
+    /// the iOS Bedrock touch overlay.
+    pub(in crate::game) fn cached_guide_facts(&mut self) -> Facts {
+        match self.pad.guide_facts {
+            Some((tick, facts)) if tick == self.ticks => facts,
+            _ => {
+                let facts = self.pad_guide_facts();
+                self.pad.guide_facts = Some((self.ticks, facts));
+                facts
+            }
+        }
+    }
+
     /// Draw the guide (F1's hidden HUD never gets here). `from` is the batch's first vertex of
     /// what the rows must keep off: the HUD drawn so far, minus its full-view overlays.
     pub(in crate::game) fn draw_pad_guide(&mut self, batch: &mut HudBatch, from: usize) {
@@ -79,14 +92,7 @@ impl Game<'_> {
             return;
         }
         // Once a tick: the hit tests and the dry click don't change faster than that.
-        let facts = match self.pad.guide_facts {
-            Some((tick, facts)) if tick == self.ticks => facts,
-            _ => {
-                let facts = self.pad_guide_facts();
-                self.pad.guide_facts = Some((self.ticks, facts));
-                facts
-            }
-        };
+        let facts = self.cached_guide_facts();
         let guide = gameplay_guide::resolve(&facts, &self.settings.controller)
             .at_detail(self.settings.controller.guide_detail);
         let mut taken = Self::guide_taken(batch, from);
@@ -293,7 +299,8 @@ impl Game<'_> {
         json!({ "left": column(true), "right": column(false), "view": view })
     }
 
-    fn pad_guide_facts(&mut self) -> Facts {
+    // horizon-ios: exposed inside `crate::game` so the iOS overlay reuses the cached guide facts.
+    pub(in crate::game) fn pad_guide_facts(&mut self) -> Facts {
         let spectator = self.spectator();
         let sneaking = self.keys.held(Action::Sneak);
         let glider = self.glider_worn();

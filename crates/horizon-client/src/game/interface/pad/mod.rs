@@ -398,6 +398,30 @@ impl Game<'_> {
             self.pad_menu_frame(event_loop);
             return;
         }
+        // horizon-ios: drain native Apple `GCController` connection events and live state so
+        // Horizon's full console mode (glyphs, guide, radial menu, inventory snapping, analog
+        // movement, haptics) runs natively on iOS where gilrs has no backend.
+        #[cfg(target_os = "ios")]
+        {
+            for conn in horizon_client_input::touch_bridge::take_ios_gamepad_connections() {
+                let change = if conn.connected {
+                    Connection::Connected(conn.style)
+                } else {
+                    Connection::Disconnected {
+                        active: self.pad.in_use,
+                    }
+                };
+                self.pad.connections.push(change);
+            }
+            if horizon_client_input::touch_bridge::active_input_mode()
+                != horizon_client_input::touch_bridge::InputMode::Gamepad
+            {
+                if self.pad.in_use {
+                    self.pad_yield_input(event_loop);
+                }
+                self.pad.keyboard_took_over = true;
+            }
+        }
         let hardware = match self.pad.feed {
             // A scripted run leaves the person's pad at rest and unread, as the window drops
             // their keys and mouse: a read makes a newly touched pad the active one, which lets
@@ -405,7 +429,35 @@ impl Game<'_> {
             // held again after it.
             _ if self.scripted_run() => PadState::default(),
             Some(state) => state,
-            None => self.pad.read(),
+            None => {
+                #[cfg(target_os = "ios")]
+                {
+                    if let Some(snapshot) =
+                        horizon_client_input::touch_bridge::take_ios_gamepad_snapshot()
+                    {
+                        if snapshot.connected {
+                            self.pad.style = snapshot.style;
+                            self.pad.device = Some(Device {
+                                name: snapshot.name,
+                                vendor: None,
+                                product: None,
+                            });
+                            self.pad.peaks = snapshot.peaks;
+                            snapshot.state
+                        } else {
+                            self.pad.device = None;
+                            self.pad.peaks = [[0.0; 2]; 2];
+                            PadState::default()
+                        }
+                    } else {
+                        self.pad.read()
+                    }
+                }
+                #[cfg(not(target_os = "ios"))]
+                {
+                    self.pad.read()
+                }
+            }
         };
         // A Nintendo pad going by its letters is read that way: its own, or the one
         // splitscreen's router feeds this player.
@@ -860,6 +912,17 @@ impl Game<'_> {
         };
         self.pad.last_rumble = Some((rumble.name(), pulse));
         self.pad_vibrate(rumble, pulse);
+        // horizon-ios: forward controller rumble pulses to Apple `GCController.haptics`.
+        #[cfg(target_os = "ios")]
+        horizon_client_input::touch_bridge::push_rumble(
+            horizon_client_input::touch_bridge::RumbleCommand {
+                strong: pulse.strong,
+                weak: pulse.weak,
+                left_trigger: pulse.triggers[0],
+                right_trigger: pulse.triggers[1],
+                millis: pulse.millis,
+            },
+        );
     }
 
     /// `horizon-ctl pad ...`.

@@ -2,10 +2,9 @@
 name = "horizon-ios"
 version = "0.1.0"
 edition.workspace = true
-# The app links Amethyst-iOS's touch controls (objc/, GPL-3.0): HORIZON-IOS.md.
-license = "GPL-3.0-or-later"
+license.workspace = true
 rust-version.workspace = true
-description = "horizon-ios: the iOS app, the official game with touch controls adapted from Amethyst-iOS"
+description = "horizon-ios: the iOS app with native Bedrock touch, GameController, and mouse+keyboard input"
 publish = false
 
 [[bin]]

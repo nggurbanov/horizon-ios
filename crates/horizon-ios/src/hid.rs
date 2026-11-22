@@ -1,0 +1,87 @@
+//! USB HID keyboard usage codes (`UIKeyboardHIDUsage` / `GCKeyCode`) mapped to `winit::keyboard::KeyCode`.
+use winit::keyboard::KeyCode;
+
+pub fn key_from_hid(usage: u16) -> Option<KeyCode> {
+    use KeyCode as K;
+    const LETTERS: [KeyCode; 26] = [
+        K::KeyA, K::KeyB, K::KeyC, K::KeyD, K::KeyE, K::KeyF, K::KeyG, K::KeyH, K::KeyI, K::KeyJ,
+        K::KeyK, K::KeyL, K::KeyM, K::KeyN, K::KeyO, K::KeyP, K::KeyQ, K::KeyR, K::KeyS, K::KeyT,
+        K::KeyU, K::KeyV, K::KeyW, K::KeyX, K::KeyY, K::KeyZ,
+    ];
+    const TOP_DIGITS: [KeyCode; 9] = [
+        K::Digit1, K::Digit2, K::Digit3, K::Digit4, K::Digit5, K::Digit6, K::Digit7, K::Digit8,
+        K::Digit9,
+    ];
+    const F_KEYS: [KeyCode; 12] = [
+        K::F1, K::F2, K::F3, K::F4, K::F5, K::F6, K::F7, K::F8, K::F9, K::F10, K::F11, K::F12,
+    ];
+    const NUMPAD_1_9: [KeyCode; 9] = [
+        K::Numpad1, K::Numpad2, K::Numpad3, K::Numpad4, K::Numpad5, K::Numpad6, K::Numpad7,
+        K::Numpad8, K::Numpad9,
+    ];
+    Some(match usage {
+        0x04..=0x1D => LETTERS[(usage - 0x04) as usize],
+        0x1E..=0x26 => TOP_DIGITS[(usage - 0x1E) as usize],
+        0x27 => K::Digit0,
+        0x28 => K::Enter,
+        0x29 => K::Escape,
+        0x2A => K::Backspace,
+        0x2B => K::Tab,
+        0x2C => K::Space,
+        0x2D => K::Minus,
+        0x2E => K::Equal,
+        0x2F => K::BracketLeft,
+        0x30 => K::BracketRight,
+        0x31 | 0x32 => K::Backslash,
+        0x33 => K::Semicolon,
+        0x34 => K::Quote,
+        0x35 => K::Backquote,
+        0x36 => K::Comma,
+        0x37 => K::Period,
+        0x38 => K::Slash,
+        0x39 => K::CapsLock,
+        0x3A..=0x45 => F_KEYS[(usage - 0x3A) as usize],
+        0x46 => K::PrintScreen,
+        0x47 => K::ScrollLock,
+        0x48 => K::Pause,
+        0x49 => K::Insert,
+        0x4A => K::Home,
+        0x4B => K::PageUp,
+        0x4C => K::Delete,
+        0x4D => K::End,
+        0x4E => K::PageDown,
+        0x4F => K::ArrowRight,
+        0x50 => K::ArrowLeft,
+        0x51 => K::ArrowDown,
+        0x52 => K::ArrowUp,
+        0x53 => K::NumLock,
+        0x54 => K::NumpadDivide,
+        0x55 => K::NumpadMultiply,
+        0x56 => K::NumpadSubtract,
+        0x57 => K::NumpadAdd,
+        0x58 => K::NumpadEnter,
+        0x59..=0x61 => NUMPAD_1_9[(usage - 0x59) as usize],
+        0x62 => K::Numpad0,
+        0x63 => K::NumpadDecimal,
+        0x64 => K::IntlBackslash,
+        0x65 => K::ContextMenu,
+        0x67 => K::NumpadEqual,
+        0x68 => K::F13,
+        0x69 => K::F14,
+        0x6A => K::F15,
+        0x6B => K::F16,
+        0x6C => K::F17,
+        0x6D => K::F18,
+        0x6E => K::F19,
+        0x6F => K::F20,
+        0xE0 => K::ControlLeft,
+        0xE1 => K::ShiftLeft,
+        0xE2 => K::AltLeft,
+        0xE3 => K::SuperLeft,
+        0xE4 => K::ControlRight,
+        0xE5 => K::ShiftRight,
+        0xE6 => K::AltRight,
+        0xE7 => K::SuperRight,
+        _ => return None,
+    })
+}

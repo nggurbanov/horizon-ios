@@ -1,10 +1,11 @@
-//! horizon-ios: the iOS app. The official game (`horizon-official`) with Amethyst-iOS's touch
-//! controls over its view (`objc/`, GPL-3.0). See HORIZON-IOS.md.
+//! horizon-ios: the iOS app. Runs the official Horizon game (`horizon-official`) with a native
+//! UIKit Bedrock touch, GameController, and hardware mouse+keyboard overlay (`objc/`).
+//! See HORIZON-IOS.md.
 
 #[cfg(target_os = "ios")]
 mod bridge;
 #[cfg(target_os = "ios")]
-mod glfw;
+mod hid;
 #[cfg(target_os = "ios")]
 mod host;
 
