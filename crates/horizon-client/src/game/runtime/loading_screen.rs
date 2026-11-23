@@ -486,8 +486,20 @@ impl ApplicationHandler for App {
                         ..OverlayState::default()
                     });
                     for event in super::window_handler::touch_events() {
-                        if let super::window_handler::TouchEvent::Window(event) = event {
-                            loading.window_event(event_loop, id, event);
+                        match event {
+                            super::window_handler::TouchEvent::Window(event) => {
+                                loading.window_event(event_loop, id, event);
+                            }
+                            // horizon-ios: apply live shader pack selection on the startup title screen too.
+                            super::window_handler::TouchEvent::SetShaderPack(pack) => {
+                                super::window_handler::apply_live_shader_pack(
+                                    &mut loading.settings,
+                                    &Game::shader_packs_dir(),
+                                    &Game::options_path(),
+                                    pack,
+                                );
+                            }
+                            _ => {}
                         }
                     }
                 }

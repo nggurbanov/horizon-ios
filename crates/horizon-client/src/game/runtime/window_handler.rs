@@ -457,7 +457,8 @@ impl Game<'_> {
 }
 
 /// horizon-ios: an iOS overlay, keyboard, or mouse input translated into game events.
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", test))]
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 pub(super) enum TouchEvent {
     Window(WindowEvent),
     Device(DeviceEvent),
@@ -466,6 +467,24 @@ pub(super) enum TouchEvent {
     TapWorld { x: f32, y: f32 },
     HoldWorld { x: f32, y: f32, active: bool },
     MoveWorldHold { x: f32, y: f32 },
+    // horizon-ios: live shader pack hot-swap (`""` = Off, `"horizon:<id>"` or classic filename).
+    SetShaderPack(String),
+}
+
+/// horizon-ios: rescans `shaderpacks/`, resolves and applies a live shader pack choice,
+/// and persists `options.txt` + `horizon-graphics.txt` so the next frame's `follow_frame`
+/// and `shader_pack_inputs` hot-swap the renderer cleanly.
+#[cfg(any(target_os = "ios", test))]
+pub(super) fn apply_live_shader_pack(
+    settings: &mut horizon_client::settings::Settings,
+    packs_dir: &std::path::Path,
+    options_path: &std::path::Path,
+    pack: String,
+) {
+    settings.shader_packs = horizon_client::shader_pack_list::scan(packs_dir);
+    let (key, _) = horizon_client::shader_pack_list::resolve(packs_dir, &pack);
+    settings.horizon.shader_pack = key;
+    settings.save(options_path);
 }
 
 /// horizon-ios: software keyboard and UIPress character text enters through winit's `Ime::Commit`
@@ -479,38 +498,42 @@ fn touch_text_window_event(text: String) -> WindowEvent {
 
 /// horizon-ios: the touch/keyboard/mouse bridge input since the last pass (`touch_bridge`), as
 /// the events Horizon's window, device, chat, and Tap-to-Interact handlers consume.
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", test))]
 pub(super) fn touch_events() -> Vec<TouchEvent> {
     use horizon_client_input::touch_bridge::{self, TouchInput};
-    use winit::event::{KeyEvent, MouseScrollDelta, TouchPhase};
-    use winit::keyboard::{Key, KeyLocation, ModifiersState, NativeKey};
+    use winit::event::{MouseScrollDelta, TouchPhase};
+    use winit::keyboard::ModifiersState;
     let device_id = DeviceId::dummy();
-    let key = |event: KeyEvent| {
-        TouchEvent::Window(WindowEvent::KeyboardInput {
-            device_id,
-            event,
-            is_synthetic: false,
-        })
-    };
     let mut events = Vec::new();
     for input in touch_bridge::take() {
         match input {
             TouchInput::Key { code, state, text } => {
-                let logical = named_key(code).map(Key::Named).unwrap_or_else(|| {
-                    text.as_deref().map_or(
-                        Key::Unidentified(NativeKey::Unidentified),
-                        |t| Key::Character(t.into()),
-                    )
-                });
-                let text = text.filter(|_| state == ElementState::Pressed);
-                events.push(key(KeyEvent::synthetic(
-                    PhysicalKey::Code(code),
-                    logical,
-                    text.map(Into::into),
-                    KeyLocation::Standard,
-                    state,
-                    false,
-                )));
+                #[cfg(target_os = "ios")]
+                {
+                    use winit::event::KeyEvent;
+                    use winit::keyboard::{Key, KeyLocation, NativeKey};
+                    let logical = named_key(code).map(Key::Named).unwrap_or_else(|| {
+                        text.as_deref().map_or(
+                            Key::Unidentified(NativeKey::Unidentified),
+                            |t| Key::Character(t.into()),
+                        )
+                    });
+                    let text = text.filter(|_| state == ElementState::Pressed);
+                    events.push(TouchEvent::Window(WindowEvent::KeyboardInput {
+                        device_id,
+                        event: KeyEvent::synthetic(
+                            PhysicalKey::Code(code),
+                            logical,
+                            text.map(Into::into),
+                            KeyLocation::Standard,
+                            state,
+                            false,
+                        ),
+                        is_synthetic: false,
+                    }));
+                }
+                #[cfg(not(target_os = "ios"))]
+                let _ = (code, state, text);
             }
             TouchInput::Modifiers {
                 shift,
@@ -559,6 +582,8 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                 events.push(TouchEvent::HoldWorld { x, y, active })
             }
             TouchInput::MoveWorldHold { x, y } => events.push(TouchEvent::MoveWorldHold { x, y }),
+            // horizon-ios: live shader pack hot-swap event.
+            TouchInput::SetShaderPack(pack) => events.push(TouchEvent::SetShaderPack(pack)),
         }
     }
     events
@@ -752,6 +777,19 @@ impl Game<'_> {
                         && ta.hold
                     {
                         ta.point = [x, y];
+                    }
+                }
+                // horizon-ios: live shader pack hot-swap from the native touch settings sheet.
+                TouchEvent::SetShaderPack(pack) => {
+                    apply_live_shader_pack(
+                        &mut self.settings,
+                        &Self::shader_packs_dir(),
+                        &Self::options_path(),
+                        pack,
+                    );
+                    self.native_shaders.forget_selection();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
                     }
                 }
             }
@@ -1398,5 +1436,75 @@ mod tests {
         let event = touch_text_window_event("алмаз".into());
         assert_eq!(event, WindowEvent::Ime(Ime::Commit("алмаз".into())));
         assert!(is_input(&event));
+    }
+
+    // horizon-ios: verify `TouchInput::SetShaderPack` translates to `TouchEvent::SetShaderPack`.
+    #[test]
+    fn touch_input_set_shader_pack_converts_to_touch_event() {
+        use horizon_client_input::touch_bridge;
+        let _ = touch_bridge::take();
+        touch_bridge::set_shader_pack("horizon:vivid_horizon".into());
+        touch_bridge::set_shader_pack("classic.zip".into());
+        touch_bridge::set_shader_pack(String::new());
+
+        let packs: Vec<String> = touch_events()
+            .into_iter()
+            .filter_map(|ev| match ev {
+                TouchEvent::SetShaderPack(p) => Some(p),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            packs,
+            vec![
+                "horizon:vivid_horizon".to_owned(),
+                "classic.zip".to_owned(),
+                String::new(),
+            ]
+        );
+    }
+
+    // horizon-ios: verify `apply_live_shader_pack` rescans packs, updates settings, and persists.
+    #[test]
+    fn apply_live_shader_pack_updates_and_persists_setting() {
+        let root = std::env::temp_dir().join(format!(
+            "horizon-ios-live-shader-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let packs_dir = root.join("shaderpacks");
+        let native_dir = packs_dir.join("vivid_pack");
+        std::fs::create_dir_all(&native_dir).unwrap();
+        let api = horizon_shader_api::manifest::API;
+        std::fs::write(
+            native_dir.join(horizon_shader_api::MANIFEST),
+            format!(
+                "schema=1\nid=\"vivid\"\nname=\"Vivid\"\nversion=\"1\"\napi=\"{api}\"\n\
+                 [sky]\nfile=\"sky.wgsl\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(packs_dir.join("classic.zip"), b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
+        let options_path = root.join("options.txt");
+        let graphics_path = root.join(horizon_client::graphics::FILE);
+
+        let mut settings = horizon_client::settings::Settings::default();
+        apply_live_shader_pack(&mut settings, &packs_dir, &options_path, "horizon:vivid".into());
+        assert_eq!(settings.horizon.shader_pack, "horizon:vivid");
+        assert_eq!(settings.shader_packs.len(), 2);
+        let saved = std::fs::read_to_string(&graphics_path).unwrap();
+        assert!(saved.contains("pickedShaderPack:horizon:vivid\n"));
+
+        apply_live_shader_pack(&mut settings, &packs_dir, &options_path, "classic.zip".into());
+        assert_eq!(settings.horizon.shader_pack, "classic.zip");
+        let saved = std::fs::read_to_string(&graphics_path).unwrap();
+        assert!(saved.contains("pickedShaderPack:classic.zip\n"));
+
+        apply_live_shader_pack(&mut settings, &packs_dir, &options_path, String::new());
+        assert_eq!(settings.horizon.shader_pack, "");
+        let saved = std::fs::read_to_string(&graphics_path).unwrap();
+        assert!(saved.contains("pickedShaderPack:\n"));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

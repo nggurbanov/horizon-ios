@@ -1,9 +1,39 @@
 // horizon-ios: native compact Bedrock touch settings sheet presented over the game.
 #import "HorizonTouchSettingsViewController.h"
+#import "HorizonIcons.h"
 #import "HorizonL10n.h"
 #import "HorizonSettings.h"
+#include "horizon_bridge.h"
+
+static NSString *hts_documentsDir(void) {
+    NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    return paths.count > 0 ? paths.firstObject : [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+}
+
+static id _Nullable hts_parseOwnedCStringJSON(char *raw) {
+    if (raw == NULL) return nil;
+    NSData *data = [NSData dataWithBytes:raw length:strlen(raw)];
+    horizon_ios_free_string(raw);
+    return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+}
+
+static UIColor *hts_emerald(void)     { return [UIColor colorWithRed:0.20 green:0.74 blue:0.40 alpha:1.0]; }
+static UIColor *hts_emeraldSoft(void) { return [UIColor colorWithRed:0.20 green:0.74 blue:0.40 alpha:0.16]; }
+static UIColor *hts_emeraldText(void) { return [UIColor colorWithRed:0.48 green:0.95 blue:0.64 alpha:1.0]; }
+static UIColor *hts_amber(void)       { return [UIColor colorWithRed:0.95 green:0.66 blue:0.23 alpha:1.0]; }
+static UIColor *hts_amberSoft(void)   { return [UIColor colorWithRed:0.95 green:0.66 blue:0.23 alpha:0.16]; }
 
 @interface HorizonTouchSettingsViewController ()
+@property (nonatomic, strong) UIStackView *shaderListStack;
+@property (nonatomic, strong) UILabel *shaderStatusLabel;
+@property (nonatomic, strong) UIActivityIndicatorView *shaderSpinner;
+@property (nonatomic, copy) NSArray<NSDictionary *> *installedShaders;
+@property (nonatomic, copy) NSString *activeShaderKey;
+@property (nonatomic, assign) BOOL shadersLoaded;
+@property (nonatomic, assign) BOOL userSelectedShader;
+@property (nonatomic, assign) NSUInteger statusGeneration;
+@property (nonatomic, strong) UIImpactFeedbackGenerator *lightHaptic;
+
 @property (nonatomic, strong) UISegmentedControl *schemeControl;
 @property (nonatomic, strong) UISwitch *floatingSwitch;
 @property (nonatomic, strong) UISwitch *autoJumpSwitch;
@@ -105,6 +135,61 @@
         [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-18.0],
     ]];
 
+    // Live Shader Pack Switcher (top section — 1 tap away after opening Settings)
+    self.installedShaders = @[];
+    self.activeShaderKey = @"";
+    self.lightHaptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+
+    UIView *shaderHeader = [[UIView alloc] init];
+    shaderHeader.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *shaderTitle = [[UILabel alloc] init];
+    shaderTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    shaderTitle.text = HL(@"Shaders", @"Шейдеры");
+    shaderTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
+    shaderTitle.textColor = [UIColor colorWithWhite:1.0 alpha:0.70];
+    [shaderHeader addSubview:shaderTitle];
+
+    self.shaderSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.shaderSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.shaderSpinner.color = hts_emerald();
+    self.shaderSpinner.hidesWhenStopped = YES;
+    self.shaderSpinner.transform = CGAffineTransformMakeScale(0.75, 0.75);
+    [shaderHeader addSubview:self.shaderSpinner];
+
+    self.shaderStatusLabel = [[UILabel alloc] init];
+    self.shaderStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.shaderStatusLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+    self.shaderStatusLabel.textColor = hts_emeraldText();
+    self.shaderStatusLabel.textAlignment = NSTextAlignmentRight;
+    self.shaderStatusLabel.alpha = 0.0;
+    [shaderHeader addSubview:self.shaderStatusLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [shaderHeader.heightAnchor constraintGreaterThanOrEqualToConstant:20.0],
+        [shaderTitle.leadingAnchor constraintEqualToAnchor:shaderHeader.leadingAnchor],
+        [shaderTitle.topAnchor constraintEqualToAnchor:shaderHeader.topAnchor],
+        [shaderTitle.bottomAnchor constraintEqualToAnchor:shaderHeader.bottomAnchor],
+        [self.shaderSpinner.leadingAnchor constraintEqualToAnchor:shaderTitle.trailingAnchor constant:8.0],
+        [self.shaderSpinner.centerYAnchor constraintEqualToAnchor:shaderTitle.centerYAnchor],
+        [self.shaderStatusLabel.trailingAnchor constraintEqualToAnchor:shaderHeader.trailingAnchor],
+        [self.shaderStatusLabel.centerYAnchor constraintEqualToAnchor:shaderTitle.centerYAnchor],
+        [self.shaderStatusLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.shaderSpinner.trailingAnchor constant:8.0],
+    ]];
+    [stack addArrangedSubview:shaderHeader];
+
+    self.shaderListStack = [[UIStackView alloc] init];
+    self.shaderListStack.axis = UILayoutConstraintAxisVertical;
+    self.shaderListStack.spacing = 6.0;
+    [stack addArrangedSubview:self.shaderListStack];
+    [self rebuildShaderRows];
+    [self loadInstalledShadersAsync];
+
+    UIView *sectionDivider = [[UIView alloc] init];
+    sectionDivider.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
+    [sectionDivider.heightAnchor constraintEqualToConstant:1.0].active = YES;
+    [stack addArrangedSubview:sectionDivider];
+
     // Control scheme segmented picker
     UILabel *schemeTitle = [[UILabel alloc] init];
     schemeTitle.text = HL(@"Control Mode", @"Режим управления");
@@ -147,6 +232,178 @@
     self.showLauncherSwitch = [self addToggleRow:HL(@"Show Launcher on Next Start", @"Показывать лаунчер при следующем запуске") toStack:stack];
 
     [self syncUIFromSettings];
+}
+
+#pragma mark - In-Game Shader Pack Switcher
+
+- (void)loadInstalledShadersAsync {
+    [self.shaderSpinner startAnimating];
+    NSString *dir = hts_documentsDir();
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        char *raw = horizon_ios_mods_list_installed_json(dir.UTF8String, "", NULL);
+        id parsed = hts_parseOwnedCStringJSON(raw);
+        NSArray<NSDictionary *> *shaders = @[];
+        NSString *picked = @"";
+        if ([parsed isKindOfClass:NSDictionary.class]) {
+            NSDictionary *dict = (NSDictionary *)parsed;
+            if ([dict[@"shaders"] isKindOfClass:NSArray.class]) {
+                shaders = dict[@"shaders"];
+            }
+            if ([dict[@"picked_shader"] isKindOfClass:NSString.class]) {
+                picked = dict[@"picked_shader"];
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) s = weakSelf;
+            if (s == nil) return;
+            [s.shaderSpinner stopAnimating];
+            s.installedShaders = shaders;
+            if (!s.userSelectedShader) {
+                s.activeShaderKey = picked;
+            }
+            s.shadersLoaded = YES;
+            [s rebuildShaderRows];
+        });
+    });
+}
+
+- (UIControl *)makeShaderRowWithTitle:(NSString *)title
+                            packValue:(NSString *)packValue
+                             heavyGpu:(BOOL)heavyGpu
+                               active:(BOOL)active {
+    UIControl *row = [[UIControl alloc] init];
+    row.backgroundColor = active ? hts_emeraldSoft() : [UIColor colorWithWhite:1.0 alpha:0.05];
+    row.layer.cornerRadius = 9.0;
+    row.layer.borderWidth = active ? 1.0 : 0.0;
+    row.layer.borderColor = active ? hts_emerald().CGColor : UIColor.clearColor.CGColor;
+    row.accessibilityIdentifier = packValue ?: @"";
+    [row addTarget:self action:@selector(onShaderRowTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = title;
+    label.font = [UIFont systemFontOfSize:13.5 weight:(active ? UIFontWeightSemibold : UIFontWeightMedium)];
+    label.textColor = active ? hts_emeraldText() : UIColor.whiteColor;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    label.userInteractionEnabled = NO;
+    [row addSubview:label];
+
+    UIImageView *check = [[UIImageView alloc] initWithImage:[HorizonIcons iconForKind:HorizonIconCheck pointSize:15.0]];
+    check.translatesAutoresizingMaskIntoConstraints = NO;
+    check.tintColor = hts_emerald();
+    check.hidden = !active;
+    check.userInteractionEnabled = NO;
+    [row addSubview:check];
+
+    NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray arrayWithArray:@[
+        [row.heightAnchor constraintEqualToConstant:40.0],
+        [label.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:12.0],
+        [label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [check.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12.0],
+        [check.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [check.widthAnchor constraintEqualToConstant:15.0],
+        [check.heightAnchor constraintEqualToConstant:15.0],
+    ]];
+
+    if (heavyGpu) {
+        UILabel *badge = [[UILabel alloc] init];
+        badge.translatesAutoresizingMaskIntoConstraints = NO;
+        badge.text = [NSString stringWithFormat:@" %@ ", HL(@"Heavy GPU", @"Тяжёлый GPU")];
+        badge.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
+        badge.textColor = hts_amber();
+        badge.backgroundColor = hts_amberSoft();
+        badge.layer.cornerRadius = 5.0;
+        badge.clipsToBounds = YES;
+        badge.userInteractionEnabled = NO;
+        [badge setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+        [badge setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+        [row addSubview:badge];
+
+        [constraints addObjectsFromArray:@[
+            [badge.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [badge.trailingAnchor constraintEqualToAnchor:check.leadingAnchor constant:-8.0],
+            [badge.heightAnchor constraintEqualToConstant:18.0],
+            [label.trailingAnchor constraintLessThanOrEqualToAnchor:badge.leadingAnchor constant:-8.0],
+        ]];
+    } else {
+        [constraints addObject:[label.trailingAnchor constraintLessThanOrEqualToAnchor:check.leadingAnchor constant:-8.0]];
+    }
+
+    [NSLayoutConstraint activateConstraints:constraints];
+    return row;
+}
+
+- (void)rebuildShaderRows {
+    for (UIView *sub in [self.shaderListStack.arrangedSubviews copy]) {
+        [self.shaderListStack removeArrangedSubview:sub];
+        [sub removeFromSuperview];
+    }
+
+    NSString *activeKey = self.activeShaderKey ?: @"";
+    BOOL offActive = (activeKey.length == 0);
+    [self.shaderListStack addArrangedSubview:[self makeShaderRowWithTitle:HL(@"Off (Vanilla)", @"Выкл (Ванилла)")
+                                                                packValue:@""
+                                                                 heavyGpu:NO
+                                                                   active:offActive]];
+
+    for (NSDictionary *item in self.installedShaders) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *key = [item[@"key"] isKindOfClass:NSString.class] ? item[@"key"] : @"";
+        NSString *file = [item[@"file"] isKindOfClass:NSString.class] ? item[@"file"] : @"";
+        NSString *name = [item[@"name"] isKindOfClass:NSString.class] ? item[@"name"] : @"";
+        NSString *packValue = key.length > 0 ? key : file;
+        if (packValue.length == 0) continue;
+        NSString *displayName = name.length > 0 ? name : packValue;
+        BOOL heavyGpu = [item[@"heavy_gpu"] boolValue] || [item[@"traces"] boolValue];
+        BOOL active = (activeKey.length > 0)
+            && ([activeKey isEqualToString:packValue]
+                || (file.length > 0 && [activeKey isEqualToString:file]));
+        [self.shaderListStack addArrangedSubview:[self makeShaderRowWithTitle:displayName
+                                                                    packValue:packValue
+                                                                     heavyGpu:heavyGpu
+                                                                       active:active]];
+    }
+
+    if (self.shadersLoaded && self.installedShaders.count == 0) {
+        UILabel *hint = [[UILabel alloc] init];
+        hint.text = HL(@"Install shader packs in Pre-Launcher → Mods → Shaders",
+                       @"Установите шейдеры: Лаунчер → Моды → Шейдеры");
+        hint.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightRegular];
+        hint.textColor = [UIColor colorWithWhite:1.0 alpha:0.52];
+        hint.numberOfLines = 0;
+        [self.shaderListStack addArrangedSubview:hint];
+    }
+}
+
+- (void)onShaderRowTapped:(UIControl *)sender {
+    NSString *packValue = sender.accessibilityIdentifier ?: @"";
+    self.userSelectedShader = YES;
+    self.activeShaderKey = packValue;
+    [self rebuildShaderRows];
+
+    if (HorizonSettings.shared.hapticsEnabled) {
+        [self.lightHaptic prepare];
+        [self.lightHaptic impactOccurred];
+    }
+
+    horizon_ios_set_live_shader_pack(packValue.UTF8String);
+
+    self.statusGeneration += 1;
+    NSUInteger gen = self.statusGeneration;
+    self.shaderStatusLabel.text = (packValue.length == 0)
+        ? HL(@"Shader disabled", @"Шейдер выключен")
+        : HL(@"Shader applied", @"Шейдер применён");
+    self.shaderStatusLabel.alpha = 1.0;
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        typeof(self) s = weakSelf;
+        if (s == nil || s.statusGeneration != gen) return;
+        [UIView animateWithDuration:0.25 animations:^{
+            s.shaderStatusLabel.alpha = 0.0;
+        }];
+    });
 }
 
 - (UISwitch *)addToggleRow:(NSString *)title toStack:(UIStackView *)stack {

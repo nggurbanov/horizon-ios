@@ -214,6 +214,7 @@ void horizon_ios_set_touch_move(bool active, float left, float forward);
 void horizon_ios_set_hide_crosshair(bool hide);
 void horizon_ios_set_touch_auto_jump(bool enabled);
 void horizon_ios_set_keyboard_inset_px(float px);
+void horizon_ios_set_live_shader_pack(const char *pack_value);
 
 void horizon_ios_send_key(uint16_t hid_usage, bool down);
 void horizon_ios_send_modifiers(uint8_t mask);

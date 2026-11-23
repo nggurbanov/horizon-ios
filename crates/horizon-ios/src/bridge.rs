@@ -146,6 +146,20 @@ pub extern "C" fn horizon_ios_set_keyboard_inset_px(px: f32) {
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_set_live_shader_pack(pack_value: *const c_char) {
+    let pack = if pack_value.is_null() {
+        String::new()
+    } else {
+        // SAFETY: caller passes a valid NUL-terminated UTF-8 C string (or NULL).
+        unsafe { CStr::from_ptr(pack_value) }
+            .to_str()
+            .unwrap_or("")
+            .to_owned()
+    };
+    touch_bridge::set_shader_pack(pack);
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn horizon_ios_send_key(hid_usage: u16, down: bool) {
     if let Some(code) = hid::key_from_hid(hid_usage) {
         touch_bridge::push_key(code, down);

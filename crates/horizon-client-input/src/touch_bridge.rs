@@ -327,6 +327,9 @@ pub enum TouchInput {
     /// Tap-to-Interact: live finger position update while holding, so sliding to a neighboring
     /// block retargets mining cleanly.
     MoveWorldHold { x: f32, y: f32 },
+    // horizon-ios: live shader pack hot-swap from the in-game native touch settings sheet
+    // (`""` = Off/Vanilla, `"horizon:<id>"` = native `.hshader`, `"<filename>"` = classic zip/folder).
+    SetShaderPack(String),
 }
 
 /// Snapshot of the active native iOS `GCController` for Horizon's `Pads` engine.
@@ -587,6 +590,12 @@ pub fn push(input: TouchInput) {
             queue.push_back(input);
         }
     }
+}
+
+/// horizon-ios: queues a live shader pack switch (`""` = Off/Vanilla, `"horizon:<id>"` = native
+/// `.hshader`, `"<filename>"` = classic zip/folder) for the next event-loop pass.
+pub fn set_shader_pack(pack: String) {
+    push(TouchInput::SetShaderPack(pack));
 }
 
 /// The inputs since the last call, oldest first.
@@ -1275,5 +1284,26 @@ mod tests {
         let dbg = format!("{entry:?}");
         assert!(!dbg.contains("super_secret_password"));
         assert!(dbg.contains("<redacted>"));
+    }
+
+    // horizon-ios: live shader pack hot-swap queue ordering and drain behavior.
+    #[test]
+    fn set_shader_pack_queues_and_drains_in_order() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_queue_and_modifiers();
+
+        set_shader_pack("horizon:vivid_horizon".into());
+        set_shader_pack("complementary.zip".into());
+        set_shader_pack(String::new());
+
+        assert_eq!(
+            take(),
+            [
+                TouchInput::SetShaderPack("horizon:vivid_horizon".into()),
+                TouchInput::SetShaderPack("complementary.zip".into()),
+                TouchInput::SetShaderPack(String::new()),
+            ]
+        );
+        assert!(take().is_empty());
     }
 }
