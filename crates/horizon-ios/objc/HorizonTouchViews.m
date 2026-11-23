@@ -686,7 +686,13 @@ static UIColor *bedrockBorderColor(BOOL pressed, BOOL active, CGFloat opacity) {
     [self.delegate chatBarDidChangeText:self.textField.text ?: @""];
 }
 
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    (void)textField;
+    [self.delegate chatBarDidBeginEditing];
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    (void)textField;
     [self.delegate chatBarDidTapSend];
     return NO;
 }

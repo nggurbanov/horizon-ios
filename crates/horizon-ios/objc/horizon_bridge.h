@@ -244,7 +244,7 @@ void horizon_ios_attach_overlay(void *ui_view);
 
 // Pre-Launcher lifecycle (HorizonPreLauncherAppDelegate.m)
 void horizon_ios_run_prelauncher_or_launch(void (*launch_cb)(void));
-void horizon_ios_dismiss_prelauncher_window(void);
+void horizon_ios_dismiss_prelauncher_window(void *game_window);
 
 // Auto-Login lookup (HorizonAutoLoginStore.m, called from Rust host.rs)
 bool horizon_ios_lookup_autologin_parts(

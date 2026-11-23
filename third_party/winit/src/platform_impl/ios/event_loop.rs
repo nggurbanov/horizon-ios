@@ -305,6 +305,11 @@ impl<T: 'static> EventLoop<T> {
         // horizon-ios: when launched from `HorizonPreLauncherAppDelegate`, `UIApplicationMain` is
         // already running on the 64 MiB stack. Drive winit's launch/resume lifecycle directly
         // and keep the main CFRunLoop spinning instead of calling `UIApplicationMain` twice.
+        // Callers MUST enter this outside `dispatch_get_main_queue()` (e.g. via `NSTimer` on
+        // `NSRunLoop.mainRunLoop`) so CoreFoundation's `__CFTSDKeyIsInGCDMainQ` stays clear and
+        // nested `CFRunLoopRun()` continues draining `_dispatch_main_queue_callback_4CF` for
+        // UIKit's software keyboard (`UIKeyboardTaskQueue` / `RTIInputSystemClient`),
+        // `CADisplayLink`, and GameController callbacks.
         if let Some(app) = application {
             app_state::did_finish_launching(self.mtm);
             // UIApplicationStateActive == 0

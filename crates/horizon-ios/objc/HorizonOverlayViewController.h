@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (nullable HorizonOverlayViewController *)current;
 - (void)attachToGameView:(UIView *)gameView;
+- (void)reassertFirstResponderIfNeeded;
 
 @end
 

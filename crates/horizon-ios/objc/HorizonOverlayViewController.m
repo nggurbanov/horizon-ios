@@ -134,14 +134,17 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
 @interface HorizonProxyTextField : UITextField
 @property (nonatomic, copy, nullable) void (^onDeleteBackward)(void);
+@property (nonatomic, assign) BOOL handledDeleteInSuper;
 @end
 
 @implementation HorizonProxyTextField
 - (void)deleteBackward {
+    self.handledDeleteInSuper = NO;
     [super deleteBackward];
-    if (self.onDeleteBackward) {
+    if (!self.handledDeleteInSuper && self.onDeleteBackward) {
         self.onDeleteBackward();
     }
+    self.handledDeleteInSuper = NO;
 }
 @end
 
@@ -174,6 +177,12 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 @property (nonatomic, assign) BOOL lastChatOpen;
 @property (nonatomic, assign) uint64_t lastChatRevision;
 @property (nonatomic, assign) BOOL keyboardDismissedForCurrentField;
+@property (nonatomic, assign) BOOL wantKeyboardFocus;
+@property (nonatomic, assign) NSInteger keyboardFocusAttempts;
+@property (nonatomic, assign) CFTimeInterval lastKeyboardFocusAttemptTime;
+@property (nonatomic, assign) BOOL pendingKeyboardReopenAfterTap;
+@property (nonatomic, assign) NSInteger pendingKeyboardReopenDelayTicks;
+@property (nonatomic, assign) BOOL pendingKeyboardReopenHadCarried;
 @property (nonatomic, assign) BOOL lastPointerLockedWanted;
 @property (nonatomic, assign) CGFloat screenScale;
 @property (nonatomic, assign) CGSize lastLayoutSize;
@@ -415,8 +424,16 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     self.chatBar.hidden = YES;
     [self.view addSubview:self.chatBar];
 
-    // 5. Hidden proxy text field for non-chat in-game text boxes (signs, books, search, anvil, world name)
-    self.proxyTextField = [[HorizonProxyTextField alloc] initWithFrame:CGRectMake(0, -40, 200, 32)];
+    // 5. Invisible in-bounds proxy text field for non-chat in-game text boxes
+    //    (signs, books, search, anvil, world name, options). Kept inside visible bounds with
+    //    alpha 0.01 so UIKit treats it as presentable while remaining invisible and non-blocking.
+    self.proxyTextField = [[HorizonProxyTextField alloc] initWithFrame:CGRectMake(2.0, 2.0, 1.0, 1.0)];
+    self.proxyTextField.alpha = 0.01;
+    self.proxyTextField.userInteractionEnabled = NO;
+    self.proxyTextField.tintColor = UIColor.clearColor;
+    self.proxyTextField.textColor = UIColor.clearColor;
+    self.proxyTextField.backgroundColor = UIColor.clearColor;
+    self.proxyTextField.borderStyle = UITextBorderStyleNone;
     self.proxyTextField.delegate = self;
     self.proxyTextField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.proxyTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -434,6 +451,16 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
 #pragma mark - Attachment & Layout
 
+- (void)reassertFirstResponderIfNeeded {
+    if (self.chatBar.textField.isFirstResponder || self.proxyTextField.isFirstResponder) {
+        return;
+    }
+    if (self.presentedViewController != nil) {
+        return;
+    }
+    [self becomeFirstResponder];
+}
+
 - (void)attachToGameView:(UIView *)gameView {
     UIViewController *parent = gameView.window.rootViewController;
 
@@ -441,7 +468,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         self.parentViewController == parent) {
         [gameView bringSubviewToFront:self.view];
         self.view.layer.zPosition = 1000;
-        [self becomeFirstResponder];
+        [self reassertFirstResponderIfNeeded];
         return;
     }
 
@@ -481,7 +508,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     [self updateScreenScale];
     [self layoutControls];
     [self applySettingsToViews];
-    [self becomeFirstResponder];
+    [self reassertFirstResponderIfNeeded];
 
     NSLog(@"horizon-ios: native Bedrock overlay attached to %@ %@ (scale %.1f)",
           NSStringFromClass(gameView.class), NSStringFromCGRect(gameView.frame), self.screenScale);
@@ -696,6 +723,13 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     }
     if (oldMode == HORIZON_INPUT_MODE_KEYBOARD_MOUSE && newMode != HORIZON_INPUT_MODE_KEYBOARD_MOUSE) {
         [self.hwManager releaseAllHeldKeys];
+    }
+    if (newMode == HORIZON_INPUT_MODE_TOUCH &&
+        self.gameState.text_field_focused &&
+        !self.keyboardDismissedForCurrentField) {
+        self.wantKeyboardFocus = YES;
+        self.keyboardFocusAttempts = 0;
+        self.lastKeyboardFocusAttemptTime = 0.0;
     }
 
     [self updateHudVisibility];
@@ -992,31 +1026,124 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
     }
 
     // Transition: focus lost -> automatically dismiss keyboard & reclaim first responder
-    if (self.lastTextFieldFocused && !focused) {
+    if (!focused) {
+        BOOL hadFocus = self.lastTextFieldFocused
+            || self.wantKeyboardFocus
+            || self.pendingKeyboardReopenAfterTap
+            || self.chatBar.textField.isFirstResponder
+            || self.proxyTextField.isFirstResponder;
         self.keyboardDismissedForCurrentField = NO;
-        if (self.chatBar.textField.isFirstResponder) {
-            [self.chatBar.textField resignFirstResponder];
+        self.wantKeyboardFocus = NO;
+        self.keyboardFocusAttempts = 0;
+        self.lastKeyboardFocusAttemptTime = 0.0;
+        self.pendingKeyboardReopenAfterTap = NO;
+        self.pendingKeyboardReopenDelayTicks = 0;
+        if (hadFocus) {
+            if (self.chatBar.textField.isFirstResponder) {
+                [self.chatBar.textField resignFirstResponder];
+            }
+            if (self.proxyTextField.isFirstResponder) {
+                [self.proxyTextField resignFirstResponder];
+            }
+            [self reassertFirstResponderIfNeeded];
         }
-        if (self.proxyTextField.isFirstResponder) {
-            [self.proxyTextField resignFirstResponder];
-        }
-        [self becomeFirstResponder];
+        self.lastTextFieldFocused = NO;
+        self.lastChatOpen = chatOpen;
+        return;
     }
 
-    // Transition: focus gained -> automatically open keyboard (chat bar or proxy field)
-    BOOL shouldAutoShow = focused && !self.keyboardDismissedForCurrentField &&
-                          self.presentedViewController == nil &&
-                          self.inputMode != HORIZON_INPUT_MODE_GAMEPAD;
+    // Deferred reopen after tapping inside inventory/menu while keyboard was dismissed.
+    // Waiting 2 display ticks lets Rust process the tap click first so unfocusing the search box
+    // or picking up an inventory item never flashes the keyboard.
+    if (self.pendingKeyboardReopenAfterTap) {
+        if (chatOpen || !self.keyboardDismissedForCurrentField ||
+            (self.gameState.carrying_item && !self.pendingKeyboardReopenHadCarried)) {
+            self.pendingKeyboardReopenAfterTap = NO;
+            self.pendingKeyboardReopenDelayTicks = 0;
+        } else if (self.pendingKeyboardReopenDelayTicks > 0) {
+            self.pendingKeyboardReopenDelayTicks--;
+        } else {
+            self.pendingKeyboardReopenAfterTap = NO;
+            self.keyboardDismissedForCurrentField = NO;
+            self.wantKeyboardFocus = YES;
+            self.keyboardFocusAttempts = 0;
+            self.lastKeyboardFocusAttemptTime = 0.0;
+        }
+    }
+
+    // Transition: focus gained or switched between chat and non-chat text box -> request keyboard
+    if (!self.lastTextFieldFocused || (chatOpen != self.lastChatOpen)) {
+        self.keyboardDismissedForCurrentField = NO;
+        self.wantKeyboardFocus = YES;
+        self.keyboardFocusAttempts = 0;
+        self.lastKeyboardFocusAttemptTime = 0.0;
+    }
+
+    // Drive keyboard presentation with bounded, throttled retries in case becomeFirstResponder
+    // returns NO on the first transition frame (e.g. layout or window handoff still settling).
+    BOOL shouldAutoShow = self.wantKeyboardFocus
+                          && !self.keyboardDismissedForCurrentField
+                          && self.presentedViewController == nil
+                          && self.inputMode != HORIZON_INPUT_MODE_GAMEPAD;
     if (shouldAutoShow) {
+        UITextField *targetField = nil;
         if (chatOpen) {
-            if (!self.chatBar.textField.isFirstResponder &&
-                (!self.lastChatOpen || !self.lastTextFieldFocused)) {
-                [self.chatBar.textField becomeFirstResponder];
+            if (self.chatBar.hidden) {
+                self.chatBar.hidden = NO;
             }
+            if (CGRectIsEmpty(self.chatBar.frame) || self.chatBar.frame.size.width < 10.0) {
+                [self layoutControls];
+            }
+            [self.chatBar layoutIfNeeded];
+            targetField = self.chatBar.textField;
         } else if (self.inputMode == HORIZON_INPUT_MODE_TOUCH) {
-            if (!self.proxyTextField.isFirstResponder && !self.lastTextFieldFocused) {
-                self.proxyTextField.text = @" ";
-                [self.proxyTextField becomeFirstResponder];
+            targetField = self.proxyTextField;
+        }
+
+        if (targetField == nil) {
+            self.wantKeyboardFocus = NO;
+            self.keyboardFocusAttempts = 0;
+        } else if (targetField.isFirstResponder) {
+            self.wantKeyboardFocus = NO;
+            self.keyboardFocusAttempts = 0;
+        } else {
+            static const NSInteger kMaxKeyboardFocusAttempts = 12;
+            CFTimeInterval now = CACurrentMediaTime();
+            if (self.keyboardFocusAttempts == 0 ||
+                (self.keyboardFocusAttempts < kMaxKeyboardFocusAttempts &&
+                 (now - self.lastKeyboardFocusAttemptTime) >= 0.08)) {
+                self.keyboardFocusAttempts++;
+                self.lastKeyboardFocusAttemptTime = now;
+
+                UIWindow *win = self.view.window;
+                if (win != nil && !win.isKeyWindow) {
+                    [win makeKeyAndVisible];
+                }
+                if (targetField == self.proxyTextField) {
+                    self.proxyTextField.text = @" ";
+                }
+                BOOL ok = [targetField becomeFirstResponder];
+                if (ok || targetField.isFirstResponder) {
+                    if (self.keyboardFocusAttempts > 1) {
+                        NSLog(@"horizon-ios: %@ became first responder on attempt %ld",
+                              chatOpen ? @"chatBar.textField" : @"proxyTextField",
+                              (long)self.keyboardFocusAttempts);
+                    }
+                    self.wantKeyboardFocus = NO;
+                    self.keyboardFocusAttempts = 0;
+                } else {
+                    NSLog(@"horizon-ios: %@ becomeFirstResponder returned NO (attempt %ld/%ld, canBecome=%d, keyWin=%d, hidden=%d, frame=%@)",
+                          chatOpen ? @"chatBar.textField" : @"proxyTextField",
+                          (long)self.keyboardFocusAttempts,
+                          (long)kMaxKeyboardFocusAttempts,
+                          [targetField canBecomeFirstResponder] ? 1 : 0,
+                          win.isKeyWindow ? 1 : 0,
+                          targetField.isHidden ? 1 : 0,
+                          NSStringFromCGRect(targetField.frame));
+                    if (self.keyboardFocusAttempts >= kMaxKeyboardFocusAttempts) {
+                        self.wantKeyboardFocus = NO;
+                    }
+                }
             }
         }
     }
@@ -1035,12 +1162,22 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 }
 
 - (void)handleKeyboardWillHide:(NSNotification *)note {
+    (void)note;
     self.keyboardInsetPoints = 0.0;
     horizon_ios_set_keyboard_inset_px(0.0f);
+    if (self.presentedViewController != nil) {
+        return;
+    }
     if (self.gameState.text_field_focused) {
         self.keyboardDismissedForCurrentField = YES;
+        self.wantKeyboardFocus = NO;
+        self.keyboardFocusAttempts = 0;
+        self.pendingKeyboardReopenAfterTap = NO;
     }
-    [self becomeFirstResponder];
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf reassertFirstResponderIfNeeded];
+    });
 }
 
 - (void)handleAppWillResignActive:(NSNotification *)note {
@@ -1050,23 +1187,33 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
 #pragma mark - HorizonChatBarDelegate
 
+- (void)chatBarDidBeginEditing {
+    self.keyboardDismissedForCurrentField = NO;
+    self.wantKeyboardFocus = NO;
+    self.keyboardFocusAttempts = 0;
+    self.pendingKeyboardReopenAfterTap = NO;
+    self.pendingKeyboardReopenDelayTicks = 0;
+}
+
 - (void)chatBarDidChangeText:(NSString *)text {
     horizon_ios_send_chat_text(text.UTF8String);
 }
 
 - (void)chatBarDidTapSend {
+    self.wantKeyboardFocus = NO;
     horizon_ios_send_chat_text((self.chatBar.textField.text ?: @"").UTF8String);
     horizon_ios_send_key(HORIZON_HID_ENTER, true);
     horizon_ios_send_key(HORIZON_HID_ENTER, false);
     [self.chatBar.textField resignFirstResponder];
-    [self becomeFirstResponder];
+    [self reassertFirstResponderIfNeeded];
 }
 
 - (void)chatBarDidTapClose {
+    self.wantKeyboardFocus = NO;
     horizon_ios_send_key(HORIZON_HID_ESCAPE, true);
     horizon_ios_send_key(HORIZON_HID_ESCAPE, false);
     [self.chatBar.textField resignFirstResponder];
-    [self becomeFirstResponder];
+    [self reassertFirstResponderIfNeeded];
 }
 
 - (void)chatBarDidTapTab {
@@ -1094,6 +1241,7 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         return YES;
     }
     if (string.length == 0 && range.length > 0) {
+        self.proxyTextField.handledDeleteInSuper = YES;
         horizon_ios_send_key(HORIZON_HID_BACKSPACE, true);
         horizon_ios_send_key(HORIZON_HID_BACKSPACE, false);
         textField.text = @" ";
@@ -1113,10 +1261,11 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     if (textField == self.proxyTextField) {
+        self.wantKeyboardFocus = NO;
         horizon_ios_send_key(HORIZON_HID_ENTER, true);
         horizon_ios_send_key(HORIZON_HID_ENTER, false);
         [textField resignFirstResponder];
-        [self becomeFirstResponder];
+        [self reassertFirstResponderIfNeeded];
         return NO;
     }
     return YES;
@@ -1595,8 +1744,6 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
         return;
     }
     rec.role = HorizonFingerRoleMenu;
-    // If user tapped a text field while keyboard was dismissed, allow auto-show again
-    self.keyboardDismissedForCurrentField = NO;
     horizon_ios_send_cursor(pt.x * self.screenScale, pt.y * self.screenScale);
     horizon_ios_send_mouse_button(0, true);
     rec.invMouseDown = YES;
@@ -1896,10 +2043,19 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
                     // Released during green bar -> perform Bedrock split stack (Right Click)!
                     [self triggerInventorySplitAt:rec.startPoint];
                 } else if (!rec.dragged) {
-                    // Short tap on slot -> crisp Left Click!
+                    // Short tap on slot / search box -> crisp Left Click!
                     horizon_ios_send_cursor(rec.currentPoint.x * self.screenScale, rec.currentPoint.y * self.screenScale);
                     horizon_ios_send_mouse_button(0, true);
                     horizon_ios_send_mouse_button(0, false);
+                    if (self.gameState.text_field_focused &&
+                        self.keyboardDismissedForCurrentField &&
+                        !self.gameState.chat_open &&
+                        !self.gameState.carrying_item &&
+                        !self.invQuickMoveEnabled) {
+                        self.pendingKeyboardReopenAfterTap = YES;
+                        self.pendingKeyboardReopenDelayTicks = 2;
+                        self.pendingKeyboardReopenHadCarried = self.gameState.carrying_item;
+                    }
                 }
             }
             if (rec.invQuickMoveModSent) {
@@ -1913,6 +2069,14 @@ typedef NS_ENUM(NSInteger, HorizonActionTag) {
             if (rec.invMouseDown) {
                 horizon_ios_send_mouse_button(0, false);
                 rec.invMouseDown = NO;
+            }
+            if (!cancelled && !rec.dragged &&
+                self.gameState.text_field_focused &&
+                self.keyboardDismissedForCurrentField &&
+                !self.gameState.chat_open) {
+                self.pendingKeyboardReopenAfterTap = YES;
+                self.pendingKeyboardReopenDelayTicks = 2;
+                self.pendingKeyboardReopenHadCarried = NO;
             }
             break;
         }
@@ -2162,7 +2326,16 @@ void horizon_ios_attach_overlay(void *ui_view) {
             sCurrentOverlay = overlay;
         }
         [overlay attachToGameView:gameView];
-        horizon_ios_dismiss_prelauncher_window();
+        horizon_ios_dismiss_prelauncher_window((__bridge void *)gameView.window);
+
+        // One-shot diagnostic verifying dispatch_get_main_queue() is actively draining after handoff.
+        static BOOL sLoggedMainQueueActive = NO;
+        if (!sLoggedMainQueueActive) {
+            sLoggedMainQueueActive = YES;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSLog(@"horizon-ios: main GCD queue verified active after game handoff");
+            });
+        }
     };
 
     if (NSThread.isMainThread) {

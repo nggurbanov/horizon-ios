@@ -9,7 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIWindow *window;
 
 /// Saves env vars (`HORIZON_PLAYER_NAME`, optional `HORIZON_IOS_QUICK_SERVER` /
-/// `HORIZON_IOS_QUICK_WORLD`) and invokes the Rust game-start callback on the next main-queue turn.
+/// `HORIZON_IOS_QUICK_WORLD`) and schedules the Rust game-start callback via an `NSTimer`
+/// on `NSRunLoop.mainRunLoop` (outside GCD's main queue so nested `CFRunLoopRun` never deadlocks it).
 + (void)launchGameWithPlayerName:(nullable NSString *)playerName
                      quickServer:(nullable NSString *)quickServer
                       quickWorld:(nullable NSString *)quickWorld;

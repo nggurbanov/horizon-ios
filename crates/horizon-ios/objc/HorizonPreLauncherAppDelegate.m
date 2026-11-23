@@ -1,5 +1,6 @@
 // horizon-ios: native UIKit Pre-Launcher app delegate and zero-flash handoff into winit.
 #import "HorizonPreLauncherAppDelegate.h"
+#import "HorizonOverlayViewController.h"
 #import "HorizonPreLauncherViewController.h"
 #import "HorizonSettings.h"
 #include "horizon_bridge.h"
@@ -82,13 +83,54 @@ static BOOL horizon_resourcesManifestExists(void) {
 
     HorizonLaunchCallback cb = sLaunchCallback;
     // Allow CoreAnimation one frame to render the "Launching Horizon…" spinner before starting Rust.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(40 * NSEC_PER_MSEC)),
-                   dispatch_get_main_queue(), ^{
+    // CRITICAL: NEVER invoke `cb()` inside `dispatch_get_main_queue()`! `cb()` enters winit's
+    // `CFRunLoopRun()` loop and never returns; running it from a GCD main-queue block leaves
+    // libdispatch's serial main queue permanently draining (and sets CFRunLoop's
+    // `__CFTSDKeyIsInGCDMainQ` TSD flag), which permanently blocks every future
+    // `dispatch_async(dispatch_get_main_queue(), ...)` — including UIKit's software keyboard
+    // (`UIKeyboardTaskQueue` / `RTIInputSystemClient`), GameController handlers, and `dispatch_after`.
+    // Scheduling via `NSTimer` on `NSRunLoop.mainRunLoop` executes outside GCD's main-queue drain
+    // so nested `CFRunLoopRun()` keeps servicing `_dispatch_main_queue_callback_4CF` normally.
+    NSTimer *launchTimer = [NSTimer timerWithTimeInterval:0.04
+                                                  repeats:NO
+                                                    block:^(NSTimer * _Nonnull timer) {
+        (void)timer;
         cb();
-    });
+    }];
+    [NSRunLoop.mainRunLoop addTimer:launchTimer forMode:NSRunLoopCommonModes];
 }
 
 @end
+
+static void horizon_activateGameWindow(UIWindow * _Nullable gameWindow, UIWindow * _Nullable preWin) {
+    if (gameWindow == nil) return;
+
+    if (@available(iOS 13.0, *)) {
+        if (gameWindow.windowScene == nil) {
+            UIWindowScene *scene = preWin.windowScene;
+            if (scene == nil) {
+                for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
+                    if ([s isKindOfClass:UIWindowScene.class]) {
+                        UIWindowScene *ws = (UIWindowScene *)s;
+                        if (ws.activationState == UISceneActivationStateForegroundActive ||
+                            scene == nil) {
+                            scene = ws;
+                        }
+                    }
+                }
+            }
+            if (scene != nil) {
+                gameWindow.windowScene = scene;
+            }
+        }
+    }
+
+    id<UIApplicationDelegate> del = UIApplication.sharedApplication.delegate;
+    if ([del isKindOfClass:HorizonPreLauncherAppDelegate.class]) {
+        ((HorizonPreLauncherAppDelegate *)del).window = gameWindow;
+    }
+    [gameWindow makeKeyAndVisible];
+}
 
 #pragma mark - C entry points
 
@@ -113,12 +155,21 @@ void horizon_ios_run_prelauncher_or_launch(void (*launch_cb)(void)) {
     }
 }
 
-void horizon_ios_dismiss_prelauncher_window(void) {
+void horizon_ios_dismiss_prelauncher_window(void *game_window_ptr) {
+    UIWindow *gameWindow = (__bridge UIWindow *)game_window_ptr;
     dispatch_block_t dismissBlock = ^{
-        if (sWindowDismissed || sPreLauncherWindow == nil) return;
-        sWindowDismissed = YES;
         UIWindow *win = sPreLauncherWindow;
+        // Hand windowScene, delegate.window, and key-window ownership to the game window
+        // immediately so UIKit text fields and the software keyboard work from frame 1.
+        horizon_activateGameWindow(gameWindow, win);
+
+        if (sWindowDismissed || win == nil) {
+            [HorizonOverlayViewController.current reassertFirstResponderIfNeeded];
+            return;
+        }
+        sWindowDismissed = YES;
         win.userInteractionEnabled = NO;
+        [HorizonOverlayViewController.current reassertFirstResponderIfNeeded];
         [UIView animateWithDuration:0.24
                               delay:0.06
                             options:UIViewAnimationOptionCurveEaseOut
@@ -131,10 +182,8 @@ void horizon_ios_dismiss_prelauncher_window(void) {
             if (sPreLauncherWindow == win) {
                 sPreLauncherWindow = nil;
             }
-            id<UIApplicationDelegate> del = UIApplication.sharedApplication.delegate;
-            if ([del isKindOfClass:HorizonPreLauncherAppDelegate.class]) {
-                ((HorizonPreLauncherAppDelegate *)del).window = nil;
-            }
+            horizon_activateGameWindow(gameWindow, nil);
+            [HorizonOverlayViewController.current reassertFirstResponderIfNeeded];
         }];
     };
     if (NSThread.isMainThread) {

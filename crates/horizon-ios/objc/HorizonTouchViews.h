@@ -67,6 +67,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Native Bedrock top chat input bar (`✕`, `UITextField`, `Tab`, `↑`, `↓`, `Send`).
 @protocol HorizonChatBarDelegate <NSObject>
+- (void)chatBarDidBeginEditing;
 - (void)chatBarDidChangeText:(NSString *)text;
 - (void)chatBarDidTapSend;
 - (void)chatBarDidTapClose;

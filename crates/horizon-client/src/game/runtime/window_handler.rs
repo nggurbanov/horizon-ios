@@ -468,13 +468,22 @@ pub(super) enum TouchEvent {
     MoveWorldHold { x: f32, y: f32 },
 }
 
+/// horizon-ios: software keyboard and UIPress character text enters through winit's `Ime::Commit`
+/// so every in-game text box (`Game::ime_commit`: Creative/Recipe/Mod search, Anvil, Options
+/// search, World Options, Dialogs, Command Blocks, Signs, Books, Title, Chat) receives it without
+/// needing a physical `KeyCode`.
+#[cfg(any(target_os = "ios", test))]
+fn touch_text_window_event(text: String) -> WindowEvent {
+    WindowEvent::Ime(winit::event::Ime::Commit(text))
+}
+
 /// horizon-ios: the touch/keyboard/mouse bridge input since the last pass (`touch_bridge`), as
 /// the events Horizon's window, device, chat, and Tap-to-Interact handlers consume.
 #[cfg(target_os = "ios")]
 pub(super) fn touch_events() -> Vec<TouchEvent> {
     use horizon_client_input::touch_bridge::{self, TouchInput};
     use winit::event::{KeyEvent, MouseScrollDelta, TouchPhase};
-    use winit::keyboard::{Key, KeyLocation, ModifiersState, NativeKey, NativeKeyCode};
+    use winit::keyboard::{Key, KeyLocation, ModifiersState, NativeKey};
     let device_id = DeviceId::dummy();
     let key = |event: KeyEvent| {
         TouchEvent::Window(WindowEvent::KeyboardInput {
@@ -517,16 +526,7 @@ pub(super) fn touch_events() -> Vec<TouchEvent> {
                 events.push(TouchEvent::Modifiers(state));
             }
             TouchInput::Text(text) => {
-                for state in [ElementState::Pressed, ElementState::Released] {
-                    events.push(key(KeyEvent::synthetic(
-                        PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
-                        Key::Character(text.as_str().into()),
-                        (state == ElementState::Pressed).then(|| text.as_str().into()),
-                        KeyLocation::Standard,
-                        state,
-                        false,
-                    )));
-                }
+                events.push(TouchEvent::Window(touch_text_window_event(text)));
             }
             TouchInput::SetChatText(text) => events.push(TouchEvent::SetChatText(text)),
             TouchInput::CursorTo { x, y } => {
@@ -1308,7 +1308,7 @@ mod tests {
                 let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
                 assert!((len - 1.0).abs() < 1e-6);
                 let world_pt = [eye[0] + dir[0] * 4.0, eye[1] + dir[1] * 4.0, eye[2] + dir[2] * 4.0];
-                let ndc = horizon_client::camera::project_point(&proj, eye, yaw, pitch, world_pt)
+                let ndc = horizon_client::camera::project_point(&proj, eye, yaw, pitch, 0.0, world_pt)
                     .expect("projected screen point");
                 let want_x = point[0] * 2.0 - 1.0;
                 let want_y = 1.0 - point[1] * 2.0;
@@ -1391,5 +1391,12 @@ mod tests {
             ..Facts::default()
         };
         assert_eq!(super::super::classify_world_hold(&eating), MouseButton::Right);
+    }
+
+    #[test]
+    fn touch_text_commits_through_ime_so_all_text_boxes_receive_it() {
+        let event = touch_text_window_event("алмаз".into());
+        assert_eq!(event, WindowEvent::Ime(Ime::Commit("алмаз".into())));
+        assert!(is_input(&event));
     }
 }
