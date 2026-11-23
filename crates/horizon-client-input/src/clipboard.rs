@@ -3,7 +3,10 @@
 //! `isCopy`, `isPaste` and `isCut`, `StringUtil.filterText` and
 //! `ChatFormatting.stripFormatting`.
 
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
+// horizon-ios: arboard has no iOS (or Android) backend.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+use std::cell::RefMut;
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
 
 /// A text-editing shortcut (`InputWithModifiers.isSelectAll`, `isCopy`,
@@ -112,28 +115,6 @@ pub fn helper_clipboard_contents(clipboard: &str) -> String {
     strip_formatting(&clipboard.replace('\r', ""))
 }
 
-/// horizon-ios: arboard has no iOS backend. Without a system clipboard, text copied in the game
-/// can still be pasted in the game (`SystemClipboard`'s fallback). UIPasteboard comes later.
-#[cfg(target_os = "ios")]
-mod arboard {
-    pub enum Error {
-        ContentNotAvailable,
-        ClipboardNotSupported,
-    }
-    pub struct Clipboard;
-    impl Clipboard {
-        pub fn new() -> Result<Self, Error> {
-            Err(Error::ClipboardNotSupported)
-        }
-        pub fn get_text(&mut self) -> Result<String, Error> {
-            Err(Error::ContentNotAvailable)
-        }
-        pub fn set_text(&mut self, _: String) -> Result<(), Error> {
-            Err(Error::ClipboardNotSupported)
-        }
-    }
-}
-
 /// A clipboard: the system's, or an in-memory one in tests.
 pub trait Clipboard {
     /// `KeyboardHandler.getClipboard`: empty when there is no text.
@@ -150,6 +131,8 @@ pub trait Clipboard {
 /// It reads and writes through `&self`, as a mod's `ClientHost` reaches it.
 #[derive(Default)]
 pub struct SystemClipboard {
+    // horizon-ios: arboard has no iOS (or Android) backend; in-game copy/paste uses `copied`.
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     system: RefCell<Option<arboard::Clipboard>>,
     /// The text Horizon last copied (`horizon-ctl status`).
     copied: RefCell<Option<String>>,
@@ -161,6 +144,7 @@ impl SystemClipboard {
         self.copied.borrow().clone()
     }
     /// The system clipboard, connected on first use.
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     fn system(&self) -> RefMut<'_, Option<arboard::Clipboard>> {
         let mut system = self.system.borrow_mut();
         if system.is_none() {
@@ -170,17 +154,22 @@ impl SystemClipboard {
     }
     /// `KeyboardHandler.getClipboard`: empty when there is no text.
     pub fn text(&self) -> String {
-        let mut system = self.system();
-        let Some(board) = system.as_mut() else {
-            return self.copied().unwrap_or_default();
-        };
-        match board.get_text() {
-            Ok(text) => text,
-            Err(arboard::Error::ContentNotAvailable) => String::new(),
-            Err(_) => {
-                // A lost connection (a restarted compositor): reconnect next time.
-                *system = None;
-                String::new()
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        return self.copied().unwrap_or_default();
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        {
+            let mut system = self.system();
+            let Some(board) = system.as_mut() else {
+                return self.copied().unwrap_or_default();
+            };
+            match board.get_text() {
+                Ok(text) => text,
+                Err(arboard::Error::ContentNotAvailable) => String::new(),
+                Err(_) => {
+                    // A lost connection (a restarted compositor): reconnect next time.
+                    *system = None;
+                    String::new()
+                }
             }
         }
     }
@@ -190,11 +179,14 @@ impl SystemClipboard {
             return;
         }
         *self.copied.borrow_mut() = Some(text.to_owned());
-        let mut system = self.system();
-        if let Some(board) = system.as_mut()
-            && board.set_text(text.to_owned()).is_err()
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         {
-            *system = None;
+            let mut system = self.system();
+            if let Some(board) = system.as_mut()
+                && board.set_text(text.to_owned()).is_err()
+            {
+                *system = None;
+            }
         }
     }
 }
@@ -205,6 +197,20 @@ impl Clipboard for SystemClipboard {
     }
     fn set(&mut self, text: &str) {
         self.set_text(text);
+    }
+}
+
+#[cfg(all(test, target_os = "android"))]
+mod android_tests {
+    use super::{Clipboard, SystemClipboard};
+
+    #[test]
+    fn copied_text_remains_available_without_a_system_clipboard() {
+        let mut clipboard = SystemClipboard::default();
+        assert_eq!(clipboard.get(), "");
+        clipboard.set("stone");
+        clipboard.set("");
+        assert_eq!(clipboard.get(), "stone");
     }
 }
 

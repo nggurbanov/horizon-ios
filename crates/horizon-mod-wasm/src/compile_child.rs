@@ -1,17 +1,25 @@
 //! Internal compiler entry and private input handoff.
+#[cfg(unix)]
 use crate::module_cache::{CACHE_DIR, ModuleCache};
 use std::{
     ffi::OsString,
-    fs::OpenOptions,
-    io::{self, Read},
+    io,
     path::{Path, PathBuf},
 };
+#[cfg(unix)]
+use std::{
+    fs::OpenOptions,
+    io::Read,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
+};
 // horizon-ios: child compiler handoff is bypassed on iOS (no fork/exec).
-#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
+#[cfg(all(unix, not(target_os = "ios")))]
 use std::{fs, io::Write};
 
 /// Owns both the spelling and validation of private input names.
+#[cfg(unix)]
 struct InputName(u32, u64);
+#[cfg(unix)]
 impl InputName {
     const PREFIX: &str = ".input-";
     const SUFFIX: &str = ".tmp";
@@ -40,11 +48,10 @@ impl InputName {
     }
 }
 
-// Production handoff is Unix-only; the non-Windows cache tests also create inputs.
 // horizon-ios: child compiler handoff is bypassed on iOS (no fork/exec).
-#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
+#[cfg(all(unix, not(target_os = "ios")))]
 pub(crate) struct Input(pub(crate) PathBuf);
-#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
+#[cfg(all(unix, not(target_os = "ios")))]
 impl Input {
     pub(crate) fn new(root: &Path, bytes: &[u8]) -> io::Result<Self> {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -57,12 +64,7 @@ impl Input {
                 .file_name(),
             );
             let mut options = OpenOptions::new();
-            options.write(true).create_new(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
+            options.write(true).create_new(true).mode(0o600);
             match options.open(&path) {
                 Ok(mut file) => {
                     let input = Self(path);
@@ -75,7 +77,7 @@ impl Input {
         }
     }
 }
-#[cfg(any(all(unix, not(target_os = "ios")), all(test, not(windows))))]
+#[cfg(all(unix, not(target_os = "ios")))]
 impl Drop for Input {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
@@ -110,6 +112,16 @@ pub fn compile_child(args: impl IntoIterator<Item = OsString>) -> Option<i32> {
     })
 }
 
+#[cfg(not(unix))]
+pub(crate) fn compile(_: &Path, _: &str) -> wasmtime::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "private compiler input is Unix-only",
+    )
+    .into())
+}
+
+#[cfg(unix)]
 pub(crate) fn compile(input: &Path, expected_key: &str) -> wasmtime::Result<()> {
     let root = input
         .parent()
@@ -121,29 +133,19 @@ pub(crate) fn compile(input: &Path, expected_key: &str) -> wasmtime::Result<()> 
     if cache.disabled.is_some() {
         return Err(io::Error::other("cache folder refused").into());
     }
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(
-            (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32,
-        );
-    }
-    let mut file = options.open(input)?;
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
+        .open(input)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(io::Error::other("input is not a regular file").into());
     }
-    #[cfg(unix)]
+    if metadata.uid() != rustix::process::getuid().as_raw()
+        || metadata.nlink() != 1
+        || metadata.mode() & 0o7777 != 0o600
     {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != rustix::process::getuid().as_raw()
-            || metadata.nlink() != 1
-            || metadata.mode() & 0o7777 != 0o600
-        {
-            return Err(io::Error::other("input is not private").into());
-        }
+        return Err(io::Error::other("input is not private").into());
     }
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
